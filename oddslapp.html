@@ -1,0 +1,596 @@
+<title>Oddslappen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: two-pane workbench — editor on the left, a printed betting ticket on the right; stacks on phones. */
+:root {
+  --bg: #eef1ec;
+  --panel: #ffffff;
+  --ink: #15201a;
+  --muted: #5d6b62;
+  --line: #d3dad4;
+  --accent: #c2410c;
+  --accent-ink: #ffffff;
+  --paper: #fbfaf5;
+  --paper-ink: #1d1f1c;
+  --paper-line: #b9b6aa;
+  --win: #15803d;
+  --loss: #b91c1c;
+  --void: #6b7280;
+  --open: #a16207;
+  --field: #f6f8f5;
+  --shadow: 0 1px 0 rgba(20,30,25,.04), 0 12px 32px -18px rgba(20,30,25,.35);
+  --f-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101612; --panel: #18201b; --ink: #e6ece7; --muted: #94a39a; --line: #2b3630;
+    --accent: #f97316; --accent-ink: #1a0d04; --paper: #eceadf; --paper-ink: #1d1f1c; --paper-line: #a9a699;
+    --win: #4ade80; --loss: #f87171; --void: #9ca3af; --open: #facc15; --field: #111813;
+    --shadow: 0 12px 32px -18px rgba(0,0,0,.8);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101612; --panel: #18201b; --ink: #e6ece7; --muted: #94a39a; --line: #2b3630;
+  --accent: #f97316; --accent-ink: #1a0d04; --paper: #eceadf; --paper-ink: #1d1f1c; --paper-line: #a9a699;
+  --win: #4ade80; --loss: #f87171; --void: #9ca3af; --open: #facc15; --field: #111813;
+  --shadow: 0 12px 32px -18px rgba(0,0,0,.8);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 48px; }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 22px; }
+h1 { font-family: var(--f-display); font-weight: 800; font-size: clamp(2.2rem, 5vw, 3.2rem); line-height: .95; letter-spacing: -.01em; margin: 0; text-transform: uppercase; }
+h1 span { color: var(--accent); }
+.tag { color: var(--muted); max-width: 46ch; margin: 0; text-wrap: balance; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 24px; align-items: start; }
+@media (max-width: 880px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; min-width: 0; }
+.panel + .panel { margin-top: 20px; }
+.col { display: grid; gap: 20px; min-width: 0; }
+.col .panel + .panel { margin-top: 0; }
+h2 { font-family: var(--f-display); font-weight: 700; font-size: 1.35rem; letter-spacing: .02em; text-transform: uppercase; margin: 0 0 14px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+h2 small { font-family: var(--f-body); font-size: .8rem; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); }
+
+label { display: grid; gap: 4px; font-size: .74rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); min-width: 0; }
+input, select { font: inherit; font-size: .95rem; letter-spacing: 0; text-transform: none; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; width: 100%; min-width: 0; }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input.bad { border-color: var(--loss); }
+
+.form { display: grid; grid-template-columns: 2fr 1.2fr 1.4fr .8fr; gap: 10px; align-items: end; }
+.form .full { grid-column: 1 / -1; }
+@media (max-width: 620px) { .form { grid-template-columns: 1fr 1fr; } .form .ev { grid-column: 1 / -1; } }
+.hint { font-size: .8rem; color: var(--muted); margin: 8px 0 0; }
+.hint code { font-family: var(--f-mono); font-size: .78rem; }
+
+button { font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 9px 14px; font-weight: 600; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.primary:hover { filter: brightness(1.06); }
+button.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 6px 8px; }
+button.ghost:hover { color: var(--ink); background: var(--field); }
+.row-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+/* selections list */
+.sel-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.sel { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 6px 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line); }
+.sel:first-child { border-top: 0; }
+.sel .ev { font-weight: 600; overflow-wrap: anywhere; }
+.sel .meta { font-size: .85rem; color: var(--muted); overflow-wrap: anywhere; }
+.sel .odds { font-family: var(--f-mono); font-weight: 600; font-variant-numeric: tabular-nums; font-size: 1.05rem; }
+.sel .tools { display: flex; gap: 2px; }
+.status { font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; border-radius: 999px; padding: 3px 9px; border: 1px solid currentColor; background: transparent; }
+.status[data-s="open"] { color: var(--open); }
+.status[data-s="won"] { color: var(--win); }
+.status[data-s="lost"] { color: var(--loss); }
+.status[data-s="void"] { color: var(--void); }
+.empty { color: var(--muted); padding: 18px 0 6px; text-align: left; }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 3px; gap: 3px; background: var(--field); flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; padding: 7px 14px; border-radius: 6px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.bet-opts { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 14px; }
+@media (max-width: 620px) { .bet-opts { grid-template-columns: 1fr 1fr; } }
+
+.saved { list-style: none; margin: 0; padding: 0; }
+.saved li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.saved li:first-child { border-top: 0; }
+.saved .nm { font-weight: 600; overflow-wrap: anywhere; }
+.saved .sub { font-size: .8rem; color: var(--muted); font-family: var(--f-mono); }
+
+/* ---------- The ticket ---------- */
+.ticket-col { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); display: grid; gap: 14px; min-width: 0; }
+@media (max-width: 880px) { .ticket-col { position: static; } }
+.ticket {
+  --notch: 9px;
+  background: var(--paper); color: var(--paper-ink); font-family: var(--f-mono); font-size: .84rem; line-height: 1.45;
+  padding: 26px 22px 22px; box-shadow: var(--shadow); position: relative;
+  -webkit-mask: radial-gradient(circle var(--notch) at 0 50%, transparent 98%, #000) left / 51% 100% no-repeat,
+                radial-gradient(circle var(--notch) at 100% 50%, transparent 98%, #000) right / 51% 100% no-repeat;
+          mask: radial-gradient(circle var(--notch) at 0 50%, transparent 98%, #000) left / 51% 100% no-repeat,
+                radial-gradient(circle var(--notch) at 100% 50%, transparent 98%, #000) right / 51% 100% no-repeat;
+  font-variant-numeric: tabular-nums;
+}
+.t-head { text-align: center; display: grid; gap: 2px; }
+.t-brand { font-family: var(--f-display); font-weight: 800; font-size: 1.7rem; letter-spacing: .14em; text-transform: uppercase; line-height: 1; }
+.t-name { font-weight: 600; overflow-wrap: anywhere; }
+.t-sub { font-size: .74rem; color: #55574f; }
+.t-rule { border: 0; border-top: 1.5px dashed var(--paper-line); margin: 14px 0; }
+.t-type { display: flex; justify-content: space-between; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.t-sel { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 0 10px; padding: 7px 0; }
+.t-sel + .t-sel { border-top: 1px dotted var(--paper-line); }
+.t-sel .ev { font-weight: 600; overflow-wrap: anywhere; }
+.t-sel .pk { color: #45473f; overflow-wrap: anywhere; }
+.t-sel .od { font-weight: 600; text-align: right; }
+.t-sel .st { text-align: right; font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; }
+.t-sel.lost .ev, .t-sel.lost .pk { text-decoration: line-through; text-decoration-color: #b91c1c; }
+.t-sel .st.won { color: #15803d; } .t-sel .st.lost { color: #b91c1c; } .t-sel .st.void { color: #6b7280; } .t-sel .st.open { color: #8a5a00; }
+.t-kv { display: flex; justify-content: space-between; gap: 12px; }
+.t-kv b { font-weight: 600; }
+.t-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 6px; }
+.t-total span { text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.t-total strong { font-family: var(--f-display); font-size: 2rem; font-weight: 800; line-height: 1; }
+.t-result { margin-top: 8px; text-align: center; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: 6px; border: 1.5px solid currentColor; }
+.t-result.won { color: #15803d; } .t-result.lost { color: #b91c1c; } .t-result.open { color: #8a5a00; }
+.barcode { height: 44px; margin-top: 16px; display: flex; align-items: stretch; justify-content: center; gap: 0; overflow: hidden; }
+.barcode i { display: block; background: var(--paper-ink); }
+.t-id { text-align: center; font-size: .72rem; letter-spacing: .3em; margin-top: 4px; }
+.t-foot { text-align: center; font-size: .68rem; color: #55574f; margin-top: 12px; }
+.example-flag { font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+
+.toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-weight: 600; font-size: .9rem; z-index: 5; }
+.copy-fallback { width: 100%; min-height: 160px; font-family: var(--f-mono); font-size: .8rem; margin-top: 10px; }
+.foot-note { color: var(--muted); font-size: .8rem; margin-top: 28px; }
+@media (prefers-reduced-motion: no-preference) {
+  .t-total strong { transition: color .2s; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Odds<span>lappen</span></h1>
+    <p class="tag">Lägg in matcher och odds, välj spelform och insats. Lappen räknar ut totalodds, insats och möjlig vinst.</p>
+  </header>
+
+  <div class="grid">
+    <div class="col">
+      <section class="panel" aria-labelledby="h-add">
+        <h2 id="h-add">Lägg till spel <small id="edit-note" hidden>Redigerar val</small></h2>
+        <form id="sel-form" class="form" novalidate>
+          <label class="ev">Match / händelse
+            <input id="f-event" placeholder="Malmö FF – AIK" autocomplete="off" required>
+          </label>
+          <label>Marknad
+            <select id="f-market">
+              <option>1X2</option>
+              <option>Över/Under</option>
+              <option>Båda lagen gör mål</option>
+              <option>Handikapp</option>
+              <option>Dubbelchans</option>
+              <option>Halvtid/Fulltid</option>
+              <option>Målskytt</option>
+              <option>Hörnor</option>
+              <option>Kort</option>
+              <option>Annat</option>
+            </select>
+          </label>
+          <label>Spel
+            <input id="f-pick" placeholder="1, Över 2.5, Ja …" autocomplete="off" required>
+          </label>
+          <label>Odds
+            <input id="f-odds" inputmode="decimal" placeholder="2,10" autocomplete="off" required>
+          </label>
+          <div class="full row-actions" style="margin-top:4px">
+            <button type="submit" class="primary" id="f-submit">Lägg till på lappen</button>
+            <button type="button" id="f-cancel" hidden>Avbryt</button>
+          </div>
+        </form>
+        <p class="hint">Odds kan skrivas decimalt (<code>2,10</code>), som bråk (<code>11/10</code>) eller amerikanskt (<code>+110</code>). Allt räknas om till decimalodds.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-sel">
+        <h2 id="h-sel">Valda spel <small id="sel-count"></small></h2>
+        <ul class="sel-list" id="sel-list"></ul>
+        <div class="row-actions">
+          <button type="button" id="clear-btn">Töm lappen</button>
+          <button type="button" id="clear-confirm" class="primary" hidden>Ja, töm</button>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-bet">
+        <h2 id="h-bet">Spelform</h2>
+        <div class="seg" role="group" aria-label="Spelform" id="mode-seg">
+          <button type="button" data-mode="combo">Kombination</button>
+          <button type="button" data-mode="singles">Singlar</button>
+          <button type="button" data-mode="system">System</button>
+        </div>
+        <div class="bet-opts">
+          <label>Lappens namn
+            <input id="f-name" placeholder="Lördagslappen" autocomplete="off">
+          </label>
+          <label><span id="stake-label">Insats (kr)</span>
+            <input id="f-stake" inputmode="decimal" value="50" autocomplete="off">
+          </label>
+          <label id="sys-wrap">Systemstorlek
+            <select id="f-sys"></select>
+          </label>
+        </div>
+        <p class="hint" id="mode-hint"></p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-saved">
+        <h2 id="h-saved">Sparade lappar <small>sparas i den här webbläsaren</small></h2>
+        <ul class="saved" id="saved-list"></ul>
+      </section>
+    </div>
+
+    <aside class="ticket-col" aria-label="Förhandsvisning av lappen">
+      <article class="ticket" id="ticket"></article>
+      <div class="row-actions" style="margin-top:6px">
+        <button type="button" class="primary" id="save-btn">Spara lapp</button>
+        <button type="button" id="copy-btn">Kopiera som text</button>
+        <button type="button" id="new-btn">Ny lapp</button>
+      </div>
+      <textarea id="copy-fallback" class="copy-fallback" readonly hidden aria-label="Lappen som text"></textarea>
+    </aside>
+  </div>
+
+  <p class="foot-note">Spela ansvarsfullt. Behöver du prata med någon om spel finns Stödlinjen på 020-819 100 (stodlinjen.se). Lappen är ett räkneverktyg och lägger inga spel.</p>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const STORE_KEY = "oddslappen.v1";
+  const SAVED_KEY = "oddslappen.saved.v1";
+  const STATUSES = ["open", "won", "lost", "void"];
+  const STATUS_LABEL = { open: "Öppen", won: "Vunnen", lost: "Förlorad", void: "Struken" };
+
+  const load = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } };
+  const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+  const newId = () => {
+    const n = Math.floor(Math.random() * 1e12).toString().padStart(12, "0");
+    return n.replace(/(\d{4})(?=\d)/g, "$1-");
+  };
+
+  const EXAMPLE = {
+    example: true,
+    id: newId(),
+    name: "Lördagslappen",
+    mode: "combo",
+    stake: 50,
+    sys: 2,
+    created: Date.now(),
+    sels: [
+      { id: 1, event: "Malmö FF – AIK", market: "1X2", pick: "1", odds: 1.85, status: "won" },
+      { id: 2, event: "Hammarby – Djurgården", market: "Båda lagen gör mål", pick: "Ja", odds: 1.72, status: "open" },
+      { id: 3, event: "Arsenal – Chelsea", market: "Över/Under", pick: "Över 2.5", odds: 1.95, status: "open" }
+    ]
+  };
+
+  let slip = load(STORE_KEY) || structuredClone(EXAMPLE);
+  let editing = null;
+
+  // ---------- odds parsing ----------
+  function parseOdds(raw) {
+    const s = String(raw).trim().replace(/\s/g, "");
+    if (!s) return NaN;
+    let m;
+    if ((m = s.match(/^(\d+(?:[.,]\d+)?)\/(\d+(?:[.,]\d+)?)$/))) {
+      const a = +m[1].replace(",", "."), b = +m[2].replace(",", ".");
+      return b > 0 ? 1 + a / b : NaN;
+    }
+    if (/^[+-]\d{3,}$/.test(s)) {
+      const n = +s;
+      if (n >= 100) return 1 + n / 100;
+      if (n <= -100) return 1 + 100 / -n;
+      return NaN;
+    }
+    const d = +s.replace(",", ".");
+    return d > 1 ? d : NaN;
+  }
+  const parseNum = (raw) => { const n = +String(raw).trim().replace(/\s/g, "").replace(",", "."); return isFinite(n) && n >= 0 ? n : NaN; };
+
+  const fmtOdds = (o) => o.toLocaleString("sv-SE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtKr = (n) => n.toLocaleString("sv-SE", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) + " kr";
+  const fmtPct = (p) => (p * 100).toLocaleString("sv-SE", { maximumFractionDigits: 1 }) + " %";
+
+  // ---------- math ----------
+  function combos(arr, k) {
+    const out = [];
+    const rec = (start, acc) => {
+      if (acc.length === k) { out.push(acc.slice()); return; }
+      for (let i = start; i < arr.length; i++) { acc.push(arr[i]); rec(i + 1, acc); acc.pop(); }
+    };
+    rec(0, []);
+    return out;
+  }
+  // settled factor for one selection: won/open -> odds, void -> 1, lost -> 0
+  const settledOdds = (s) => s.status === "lost" ? 0 : s.status === "void" ? 1 : s.odds;
+
+  function calc() {
+    const sels = slip.sels;
+    const n = sels.length;
+    const stake = parseNum(slip.stake) || 0;
+    const r = { rows: 0, totalStake: 0, maxPayout: 0, totalOdds: null, liveMax: 0, state: "open", returned: 0 };
+    if (!n) return r;
+    let groups;
+    if (slip.mode === "combo") groups = [sels];
+    else if (slip.mode === "singles") groups = sels.map((s) => [s]);
+    else groups = combos(sels, Math.min(Math.max(1, slip.sys), n));
+    r.rows = groups.length;
+    r.totalStake = stake * groups.length;
+    r.maxPayout = groups.reduce((sum, g) => sum + stake * g.reduce((p, s) => p * s.odds, 1), 0);
+    if (slip.mode === "combo") r.totalOdds = sels.reduce((p, s) => p * s.odds, 1);
+    // live max (given results so far) and settled return
+    r.liveMax = groups.reduce((sum, g) => sum + stake * g.reduce((p, s) => p * settledOdds(s), 1), 0);
+    const allSettled = sels.every((s) => s.status !== "open");
+    if (allSettled) { r.state = r.liveMax > 0 ? "won" : "lost"; r.returned = r.liveMax; }
+    else if (r.liveMax === 0) { r.state = "lost"; r.returned = 0; }
+    return r;
+  }
+
+  // ---------- render ----------
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function renderSelections() {
+    const list = $("sel-list");
+    $("sel-count").textContent = slip.sels.length ? `${slip.sels.length} st` : "";
+    if (!slip.sels.length) {
+      list.innerHTML = `<li class="empty">Lappen är tom. Lägg till ett spel ovan, t.ex. <em>Malmö FF – AIK · 1X2 · 1 · 1,85</em>.</li>`;
+      return;
+    }
+    list.innerHTML = slip.sels.map((s) => `
+      <li class="sel" data-id="${s.id}">
+        <div style="min-width:0">
+          <div class="ev">${esc(s.event)}</div>
+          <div class="meta">${esc(s.market)} · ${esc(s.pick)} · ${fmtPct(1 / s.odds)} implicit chans</div>
+        </div>
+        <div class="odds">${fmtOdds(s.odds)}</div>
+        <div class="tools">
+          <button type="button" class="status" data-act="status" data-s="${s.status}" title="Byt status">${STATUS_LABEL[s.status]}</button>
+          <button type="button" class="ghost" data-act="edit" aria-label="Redigera ${esc(s.event)}">Ändra</button>
+          <button type="button" class="ghost" data-act="del" aria-label="Ta bort ${esc(s.event)}">✕</button>
+        </div>
+      </li>`).join("");
+  }
+
+  function renderMode() {
+    document.querySelectorAll("#mode-seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === slip.mode)));
+    const n = slip.sels.length;
+    const sysSel = $("f-sys");
+    const maxK = Math.max(1, n);
+    if (slip.sys > maxK) slip.sys = Math.max(1, Math.min(2, maxK));
+    sysSel.innerHTML = Array.from({ length: maxK }, (_, i) => i + 1)
+      .map((k) => `<option value="${k}" ${k === slip.sys ? "selected" : ""}>${k} av ${n || 0} (${n ? combos(Array(n).fill(0), k).length : 0} rader)</option>`).join("");
+    $("sys-wrap").hidden = slip.mode !== "system";
+    $("stake-label").textContent = slip.mode === "combo" ? "Insats (kr)" : "Insats per rad (kr)";
+    $("mode-hint").textContent = {
+      combo: "Alla spel måste gå in. Oddsen multipliceras till ett totalodds.",
+      singles: "Varje spel är en egen rad med samma insats. Vinsterna räknas var för sig.",
+      system: "Alla kombinationer av vald storlek spelas som egna rader. Några spel kan missa och lappen kan ändå ge vinst."
+    }[slip.mode];
+    $("f-name").value = slip.name || "";
+    if (document.activeElement !== $("f-stake")) $("f-stake").value = String(slip.stake).replace(".", ",");
+  }
+
+  function barcode(id) {
+    const digits = id.replace(/\D/g, "");
+    let html = "";
+    for (let i = 0; i < digits.length; i++) {
+      const d = +digits[i];
+      html += `<i style="width:${1 + (d % 3)}px;margin-right:${1 + ((d * 7) % 3)}px"></i>`;
+      html += `<i style="width:${1 + ((d + i) % 2)}px;margin-right:${2 + (d % 2)}px"></i>`;
+    }
+    return html.repeat(2);
+  }
+
+  const modeName = () => slip.mode === "combo" ? `Kombination ${slip.sels.length}` : slip.mode === "singles" ? `Singlar ×${slip.sels.length}` : `System ${slip.sys}/${slip.sels.length}`;
+  const dateStr = (t) => new Date(t).toLocaleString("sv-SE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+  function renderTicket() {
+    const r = calc();
+    const t = $("ticket");
+    const sels = slip.sels.map((s) => `
+      <div class="t-sel ${s.status}">
+        <div class="ev">${esc(s.event)}</div><div class="od">${fmtOdds(s.odds)}</div>
+        <div class="pk">${esc(s.market)}: ${esc(s.pick)}</div><div class="st ${s.status}">${STATUS_LABEL[s.status]}</div>
+      </div>`).join("") || `<div class="t-sub" style="text-align:center;padding:10px 0">Inga spel på lappen än</div>`;
+
+    let resultHtml = "";
+    if (slip.sels.length) {
+      if (r.state === "won") resultHtml = `<div class="t-result won">Vinst · ${fmtKr(r.returned)}</div>`;
+      else if (r.state === "lost") resultHtml = `<div class="t-result lost">Förlorad lapp</div>`;
+      else if (slip.sels.some((s) => s.status !== "open")) resultHtml = `<div class="t-result open">Pågår · max ${fmtKr(r.liveMax)}</div>`;
+    }
+
+    t.innerHTML = `
+      ${slip.example ? `<div class="example-flag" style="text-align:center;margin-bottom:6px">Exempellapp</div>` : ""}
+      <div class="t-head">
+        <div class="t-brand">Spelkupong</div>
+        ${slip.name ? `<div class="t-name">${esc(slip.name)}</div>` : ""}
+        <div class="t-sub">${dateStr(slip.created)}</div>
+      </div>
+      <hr class="t-rule">
+      <div class="t-type"><span>${modeName()}</span><span>${r.rows} ${r.rows === 1 ? "rad" : "rader"}</span></div>
+      <hr class="t-rule">
+      ${sels}
+      <hr class="t-rule">
+      ${r.totalOdds ? `<div class="t-kv"><span>Totalodds</span><b>${fmtOdds(r.totalOdds)}</b></div>` : ""}
+      ${slip.mode !== "combo" ? `<div class="t-kv"><span>Insats/rad</span><b>${fmtKr(parseNum(slip.stake) || 0)}</b></div>` : ""}
+      <div class="t-kv"><span>Total insats</span><b>${fmtKr(r.totalStake)}</b></div>
+      ${r.totalOdds ? `<div class="t-kv"><span>Implicit chans</span><b>${fmtPct(1 / r.totalOdds)}</b></div>` : ""}
+      <div class="t-total"><span>Möjlig vinst</span><strong>${fmtKr(r.maxPayout)}</strong></div>
+      ${resultHtml}
+      <div class="barcode" aria-hidden="true">${barcode(slip.id)}</div>
+      <div class="t-id">${slip.id}</div>
+      <div class="t-foot">Spela ansvarsfullt · 18+ · Stödlinjen 020-819 100</div>`;
+  }
+
+  function renderSaved() {
+    const saved = load(SAVED_KEY) || [];
+    const ul = $("saved-list");
+    if (!saved.length) {
+      ul.innerHTML = `<li class="empty" style="display:block">Inga sparade lappar än. Tryck <b>Spara lapp</b> under kupongen så hamnar den här.</li>`;
+      return;
+    }
+    ul.innerHTML = saved.map((s, i) => {
+      const prev = slip; slip = s; const r = calc(); slip = prev;
+      return `<li>
+        <div style="min-width:0">
+          <div class="nm">${esc(s.name || "Namnlös lapp")}</div>
+          <div class="sub">${dateStr(s.created)} · ${s.sels.length} spel · ${fmtKr(r.maxPayout)}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button type="button" data-i="${i}" data-act="open">Öppna</button>
+          <button type="button" class="ghost" data-i="${i}" data-act="rm" aria-label="Radera ${esc(s.name || "lapp")}">✕</button>
+        </div>
+      </li>`;
+    }).join("");
+  }
+
+  function render() {
+    renderSelections(); renderMode(); renderTicket(); renderSaved();
+    save(STORE_KEY, slip);
+  }
+
+  function touched() { if (slip.example) slip.example = false; }
+
+  // ---------- toast ----------
+  let toastT;
+  function toast(msg) { const el = $("toast"); el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (el.hidden = true), 1800); }
+
+  // ---------- events ----------
+  function resetForm() {
+    editing = null;
+    $("sel-form").reset();
+    $("f-submit").textContent = "Lägg till på lappen";
+    $("f-cancel").hidden = true; $("edit-note").hidden = true;
+    ["f-event", "f-pick", "f-odds"].forEach((id) => $(id).classList.remove("bad"));
+  }
+
+  $("sel-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const event = $("f-event").value.trim();
+    const pick = $("f-pick").value.trim();
+    const odds = parseOdds($("f-odds").value);
+    $("f-event").classList.toggle("bad", !event);
+    $("f-pick").classList.toggle("bad", !pick);
+    $("f-odds").classList.toggle("bad", !(odds > 1));
+    if (!event || !pick) { toast("Fyll i match och spel"); return; }
+    if (!(odds > 1)) { toast("Oddset måste vara större än 1,00"); $("f-odds").focus(); return; }
+    touched();
+    const data = { event, market: $("f-market").value, pick, odds: Math.round(odds * 100) / 100 };
+    if (editing != null) {
+      const s = slip.sels.find((x) => x.id === editing);
+      if (s) Object.assign(s, data);
+      toast("Spelet uppdaterat");
+    } else {
+      slip.sels.push({ id: Date.now(), status: "open", ...data });
+      toast("Tillagt på lappen");
+    }
+    resetForm(); render(); $("f-event").focus();
+  });
+  $("f-cancel").addEventListener("click", resetForm);
+
+  $("sel-list").addEventListener("click", (e) => {
+    const btn = e.target.closest("button"); if (!btn) return;
+    const id = +btn.closest(".sel").dataset.id;
+    const s = slip.sels.find((x) => x.id === id); if (!s) return;
+    touched();
+    if (btn.dataset.act === "status") s.status = STATUSES[(STATUSES.indexOf(s.status) + 1) % STATUSES.length];
+    if (btn.dataset.act === "del") { slip.sels = slip.sels.filter((x) => x.id !== id); if (editing === id) resetForm(); }
+    if (btn.dataset.act === "edit") {
+      editing = id;
+      $("f-event").value = s.event; $("f-market").value = s.market; $("f-pick").value = s.pick;
+      $("f-odds").value = fmtOdds(s.odds);
+      $("f-submit").textContent = "Spara ändring"; $("f-cancel").hidden = false; $("edit-note").hidden = false;
+      $("f-event").focus();
+    }
+    render();
+  });
+
+  $("clear-btn").addEventListener("click", () => {
+    if (!slip.sels.length) return;
+    $("clear-confirm").hidden = false; $("clear-btn").textContent = "Avbryt";
+    $("clear-btn").onclick = () => { $("clear-confirm").hidden = true; $("clear-btn").textContent = "Töm lappen"; $("clear-btn").onclick = null; };
+  });
+  $("clear-confirm").addEventListener("click", () => {
+    touched(); slip.sels = []; resetForm();
+    $("clear-confirm").hidden = true; $("clear-btn").textContent = "Töm lappen"; $("clear-btn").onclick = null;
+    render(); toast("Lappen tömd");
+  });
+
+  $("mode-seg").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    touched(); slip.mode = b.dataset.mode;
+    if (slip.mode === "system" && slip.sels.length >= 3 && (slip.sys < 2 || slip.sys >= slip.sels.length)) slip.sys = 2;
+    render();
+  });
+  $("f-sys").addEventListener("change", (e) => { touched(); slip.sys = +e.target.value; render(); });
+  $("f-name").addEventListener("input", (e) => { touched(); slip.name = e.target.value; renderTicket(); save(STORE_KEY, slip); });
+  $("f-stake").addEventListener("input", (e) => {
+    const n = parseNum(e.target.value);
+    e.target.classList.toggle("bad", isNaN(n));
+    if (!isNaN(n)) { touched(); slip.stake = n; renderTicket(); save(STORE_KEY, slip); }
+  });
+
+  $("save-btn").addEventListener("click", () => {
+    if (!slip.sels.length) { toast("Lägg till minst ett spel först"); return; }
+    const saved = load(SAVED_KEY) || [];
+    const copy = structuredClone(slip); copy.example = false;
+    const i = saved.findIndex((s) => s.id === copy.id);
+    if (i >= 0) saved[i] = copy; else saved.unshift(copy);
+    save(SAVED_KEY, saved.slice(0, 50));
+    renderSaved(); toast(i >= 0 ? "Lappen uppdaterad" : "Lappen sparad");
+  });
+
+  $("new-btn").addEventListener("click", () => {
+    slip = { id: newId(), name: "", mode: "combo", stake: slip.stake || 50, sys: 2, created: Date.now(), sels: [] };
+    resetForm(); render(); $("f-event").focus(); toast("Ny tom lapp");
+  });
+
+  $("saved-list").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const saved = load(SAVED_KEY) || [];
+    const i = +b.dataset.i;
+    if (b.dataset.act === "open" && saved[i]) { slip = structuredClone(saved[i]); resetForm(); render(); toast("Lapp öppnad"); }
+    if (b.dataset.act === "rm") { saved.splice(i, 1); save(SAVED_KEY, saved); renderSaved(); toast("Lapp raderad"); }
+  });
+
+  function slipText() {
+    const r = calc();
+    const L = [];
+    L.push("SPELKUPONG" + (slip.name ? " – " + slip.name : ""));
+    L.push(`${modeName()} · ${r.rows} ${r.rows === 1 ? "rad" : "rader"}`);
+    L.push("");
+    slip.sels.forEach((s, i) => L.push(`${i + 1}. ${s.event} | ${s.market}: ${s.pick} @ ${fmtOdds(s.odds)}${s.status !== "open" ? " (" + STATUS_LABEL[s.status] + ")" : ""}`));
+    L.push("");
+    if (r.totalOdds) L.push(`Totalodds: ${fmtOdds(r.totalOdds)}`);
+    L.push(`Insats: ${fmtKr(r.totalStake)}`);
+    L.push(`Möjlig vinst: ${fmtKr(r.maxPayout)}`);
+    return L.join("\n");
+  }
+  $("copy-btn").addEventListener("click", () => {
+    const text = slipText();
+    const fb = $("copy-fallback");
+    const fallback = () => { fb.value = text; fb.hidden = false; fb.focus(); fb.select(); toast("Markerad – kopiera med Ctrl/⌘+C"); };
+    try {
+      navigator.clipboard.writeText(text).then(() => { fb.hidden = true; toast("Lappen kopierad"); }, fallback);
+    } catch { fallback(); }
+  });
+
+  render();
+})();
+</script>
