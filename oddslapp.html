@@ -149,6 +149,69 @@ button.ghost:hover { color: var(--ink); background: var(--field); }
 .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-weight: 600; font-size: .9rem; z-index: 5; }
 .copy-fallback { width: 100%; min-height: 160px; font-family: var(--f-mono); font-size: .8rem; margin-top: 10px; }
 .foot-note { color: var(--muted); font-size: .8rem; margin-top: 28px; }
+
+/* tabs */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 20px; overflow-x: auto; }
+.tabs button { border: 0; border-radius: 0; background: transparent; color: var(--muted); padding: 10px 14px; font-family: var(--f-display); font-size: 1.15rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; border-bottom: 3px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+
+/* ask panel */
+.ask-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 12px; align-items: end; }
+@media (max-width: 700px) { .ask-row { grid-template-columns: 1fr 1fr; } .ask-row .big { grid-column: 1 / -1; } }
+button.big { padding: 11px 22px; font-size: 1rem; }
+.need { margin: 12px 0 0; color: var(--muted); }
+.need b { color: var(--ink); font-family: var(--f-mono); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.chip { font-size: .82rem; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--field); color: var(--muted); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.data-status { font-size: .8rem; color: var(--muted); margin: 12px 0 0; }
+
+/* suggestions */
+.sugg-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 16px; margin-top: 20px; }
+.sugg { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.sugg.best { border-color: var(--accent); }
+.sugg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.sugg-head h3 { margin: 0; font-family: var(--f-display); font-size: 1.25rem; text-transform: uppercase; letter-spacing: .03em; }
+.sugg-head .tot { font-family: var(--f-mono); font-weight: 600; }
+.chance { display: grid; gap: 6px; }
+.chance-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.chance-top strong { font-family: var(--f-display); font-size: 2.1rem; line-height: 1; }
+.chance-top span { font-size: .85rem; color: var(--muted); text-align: right; }
+.meter { height: 8px; border-radius: 4px; background: var(--field); border: 1px solid var(--line); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--accent); }
+.legs { list-style: none; margin: 0; padding: 0; display: grid; }
+.legs li { padding: 9px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; }
+.legs .lg { font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.legs .mt { font-weight: 600; overflow-wrap: anywhere; }
+.legs .pk { font-size: .88rem; overflow-wrap: anywhere; }
+.legs .od { font-family: var(--f-mono); font-weight: 600; text-align: right; }
+.legs .pr { font-size: .78rem; color: var(--muted); text-align: right; }
+.why { font-size: .82rem; color: var(--muted); grid-column: 1 / -1; overflow-wrap: anywhere; }
+.why b { color: var(--ink); font-weight: 600; }
+.sugg-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sugg-foot .pay { font-size: .9rem; }
+.sugg-foot .pay b { font-family: var(--f-mono); }
+.reality { background: var(--panel); border: 1px dashed var(--line); border-radius: 10px; padding: 14px 16px; font-size: .88rem; color: var(--muted); grid-column: 1 / -1; }
+.reality b { color: var(--ink); }
+
+/* matches */
+.match-list { display: grid; gap: 22px; margin-top: 16px; }
+.lg-group h3 { font-family: var(--f-display); font-size: 1.3rem; text-transform: uppercase; letter-spacing: .03em; margin: 0 0 10px; }
+.lg-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+.mcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.mcard .when { font-size: .78rem; color: var(--muted); font-family: var(--f-mono); }
+.mcard .teams { font-weight: 600; font-size: 1.05rem; overflow-wrap: anywhere; }
+.oddsrow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.oddsrow div { background: var(--field); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; text-align: center; }
+.oddsrow small { display: block; font-size: .7rem; color: var(--muted); letter-spacing: .06em; }
+.oddsrow b { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.oddsrow em { display: block; font-style: normal; font-size: .72rem; color: var(--muted); }
+.facts { font-size: .84rem; display: grid; gap: 4px; }
+.facts .k { font-weight: 600; }
+.facts .inj { color: var(--loss); }
+.srcs { font-size: .75rem; color: var(--muted); overflow-wrap: anywhere; }
+.srcs a { color: var(--muted); }
+.est { font-size: .7rem; color: var(--open); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 @media (prefers-reduced-motion: no-preference) {
   .t-total strong { transition: color .2s; }
 }
@@ -157,10 +220,38 @@ button.ghost:hover { color: var(--ink); background: var(--field); }
 <div class="wrap">
   <header class="top">
     <h1>Odds<span>lappen</span></h1>
-    <p class="tag">Lägg in matcher och odds, välj spelform och insats. Lappen räknar ut totalodds, insats och möjlig vinst.</p>
+    <p class="tag">Be om en lapp utifrån insats och önskad vinst, se matcher med odds, skador och form, eller bygg din egen lapp.</p>
   </header>
 
-  <div class="grid">
+  <nav class="tabs" role="tablist" aria-label="Vy">
+    <button type="button" role="tab" id="t-forslag" data-tab="forslag">Föreslå lapp</button>
+    <button type="button" role="tab" id="t-matcher" data-tab="matcher">Matcher</button>
+    <button type="button" role="tab" id="t-lapp" data-tab="lapp">Min lapp</button>
+  </nav>
+
+  <section id="tab-forslag" class="tabpane" role="tabpanel" aria-labelledby="t-forslag">
+    <div class="panel ask">
+      <div class="ask-row">
+        <label>Insats (kr)<input id="a-stake" inputmode="decimal" value="100" autocomplete="off"></label>
+        <label>Vill få tillbaka (kr)<input id="a-target" inputmode="decimal" value="400" autocomplete="off"></label>
+        <label>Max antal matcher
+          <select id="a-legs"><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option></select>
+        </label>
+        <button type="button" class="primary big" id="a-go">Föreslå lapp</button>
+      </div>
+      <p class="need" id="a-need"></p>
+      <div class="chips" id="a-leagues" aria-label="Ligor"></div>
+      <p class="data-status" id="data-status">Hämtar matchdata …</p>
+    </div>
+    <div id="a-out" class="sugg-list"></div>
+  </section>
+
+  <section id="tab-matcher" class="tabpane" role="tabpanel" aria-labelledby="t-matcher" hidden>
+    <div class="chips" id="m-leagues" aria-label="Filtrera liga"></div>
+    <div id="m-list" class="match-list"></div>
+  </section>
+
+  <div id="tab-lapp" class="tabpane grid" role="tabpanel" aria-labelledby="t-lapp" hidden>
     <div class="col">
       <section class="panel" aria-labelledby="h-add">
         <h2 id="h-add">Lägg till spel <small id="edit-note" hidden>Redigerar val</small></h2>
@@ -280,6 +371,14 @@ button.ghost:hover { color: var(--ink); background: var(--field); }
   };
 
   let slip = load(STORE_KEY) || structuredClone(EXAMPLE);
+  let savedCache = load(SAVED_KEY) || [];
+  let savedCol = null;
+  function persistSaved(changed, removedId) {
+    save(SAVED_KEY, savedCache);
+    if (!savedCol) return;
+    if (changed) savedCol.doc(changed.id).set({ slip: changed, at: Date.now() }).catch(() => {});
+    if (removedId) savedCol.doc(removedId).delete().catch(() => {});
+  }
   let editing = null;
 
   // ---------- odds parsing ----------
@@ -439,7 +538,7 @@ button.ghost:hover { color: var(--ink); background: var(--field); }
   }
 
   function renderSaved() {
-    const saved = load(SAVED_KEY) || [];
+    const saved = savedCache;
     const ul = $("saved-list");
     if (!saved.length) {
       ul.innerHTML = `<li class="empty" style="display:block">Inga sparade lappar än. Tryck <b>Spara lapp</b> under kupongen så hamnar den här.</li>`;
@@ -548,11 +647,12 @@ button.ghost:hover { color: var(--ink); background: var(--field); }
 
   $("save-btn").addEventListener("click", () => {
     if (!slip.sels.length) { toast("Lägg till minst ett spel först"); return; }
-    const saved = load(SAVED_KEY) || [];
+    const saved = savedCache;
     const copy = structuredClone(slip); copy.example = false;
     const i = saved.findIndex((s) => s.id === copy.id);
     if (i >= 0) saved[i] = copy; else saved.unshift(copy);
-    save(SAVED_KEY, saved.slice(0, 50));
+    savedCache = saved.slice(0, 50);
+    persistSaved(copy);
     renderSaved(); toast(i >= 0 ? "Lappen uppdaterad" : "Lappen sparad");
   });
 
@@ -563,10 +663,10 @@ button.ghost:hover { color: var(--ink); background: var(--field); }
 
   $("saved-list").addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
-    const saved = load(SAVED_KEY) || [];
+    const saved = savedCache;
     const i = +b.dataset.i;
-    if (b.dataset.act === "open" && saved[i]) { slip = structuredClone(saved[i]); resetForm(); render(); toast("Lapp öppnad"); }
-    if (b.dataset.act === "rm") { saved.splice(i, 1); save(SAVED_KEY, saved); renderSaved(); toast("Lapp raderad"); }
+    if (b.dataset.act === "open" && saved[i]) { slip = structuredClone(saved[i]); resetForm(); render(); showTab("lapp"); toast("Lapp öppnad"); }
+    if (b.dataset.act === "rm" && saved[i]) { const [gone] = saved.splice(i, 1); persistSaved(null, gone.id); renderSaved(); toast("Lapp raderad"); }
   });
 
   function slipText() {
@@ -591,6 +691,290 @@ button.ghost:hover { color: var(--ink); background: var(--field); }
     } catch { fallback(); }
   });
 
+  // Hooks for the suggestion engine and account sync below.
+  window.oddslappen = {
+    addSlip({ name, stake, sels }) {
+      slip = { id: newId(), name, mode: "combo", stake, sys: 2, created: Date.now(),
+        sels: sels.map((x, k) => ({ id: Date.now() + k, status: "open", ...x })) };
+      resetForm(); render();
+    },
+    connectSaved(col) {
+      savedCol = col;
+      let first = true;
+      col.onSnapshot((snap) => {
+        const remote = snap.docs.map((d) => d.data() && d.data().slip).filter(Boolean);
+        if (first) {
+          first = false;
+          const ids = new Set(remote.map((r) => r.id));
+          savedCache.filter((l) => !ids.has(l.id)).forEach((l) => { remote.push(l); col.doc(l.id).set({ slip: l, at: Date.now() }).catch(() => {}); });
+        }
+        savedCache = remote.sort((a, b) => b.created - a.created).slice(0, 50);
+        save(SAVED_KEY, savedCache);
+        renderSaved();
+      }, () => {});
+    }
+  };
+
   render();
+})();
+</script>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const num = (v) => { const n = +String(v).trim().replace(/\s/g, "").replace(",", "."); return isFinite(n) && n > 0 ? n : NaN; };
+  const fmtO = (o) => o.toLocaleString("sv-SE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtKr = (n) => Math.round(n).toLocaleString("sv-SE") + " kr";
+  const pct = (p, d = 0) => (p * 100).toLocaleString("sv-SE", { maximumFractionDigits: d }) + " %";
+  const ASSUMED_MARGIN = 1.06; // used when only one side of a market is known
+  const TAB_KEY = "oddslappen.tab";
+  const LEG_KEY = "oddslappen.leagues";
+
+  // ---------- tabs ----------
+  window.showTab = function showTab(name) {
+    document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+    ["forslag", "matcher", "lapp"].forEach((t) => ($("tab-" + t).hidden = t !== name));
+    try { localStorage.setItem(TAB_KEY, name); } catch {}
+  };
+  document.querySelector(".tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) showTab(b.dataset.tab); });
+  let startTab = "forslag";
+  try { startTab = localStorage.getItem(TAB_KEY) || "forslag"; } catch {}
+  if (/^#(forslag|matcher|lapp)$/.test(location.hash)) startTab = location.hash.slice(1);
+  showTab(startTab);
+
+  // ---------- data ----------
+  let matches = [];
+  let meta = null;
+  let dbState = "loading";
+  let leagueOff = new Set();
+  try { leagueOff = new Set(JSON.parse(localStorage.getItem(LEG_KEY) || "[]")); } catch {}
+
+  const kick = (m) => new Date(m.kickoff).getTime();
+  const upcoming = () => matches.filter((m) => !m.kickoff || kick(m) > Date.now() - 5 * 60e3).sort((a, b) => kick(a) - kick(b));
+  const leagues = () => [...new Set(upcoming().map((m) => m.league))].sort((a, b) => a.localeCompare(b, "sv"));
+
+  // Fair (margin-free) probabilities for each priced outcome.
+  function outcomes(m) {
+    const out = [];
+    const o = m.odds || {};
+    const keys = [["home", "1", m.home], ["draw", "X", "Oavgjort"], ["away", "2", m.away]];
+    const full = keys.every(([k]) => o[k] > 1);
+    const book = full ? keys.reduce((s, [k]) => s + 1 / o[k], 0) : null;
+    keys.forEach(([k, sign, label]) => {
+      if (!(o[k] > 1)) return;
+      out.push({ market: "1X2", pick: `${sign} (${k === "draw" ? "oavgjort" : label + " vinner"})`, odds: o[k],
+        p: full ? (1 / o[k]) / book : (1 / o[k]) / ASSUMED_MARGIN, est: !full });
+    });
+    (m.extra || []).forEach((x) => {
+      if (!(x.odds > 1)) return;
+      const both = x.opp > 1;
+      const book2 = both ? 1 / x.odds + 1 / x.opp : null;
+      out.push({ market: x.market || "Annat", pick: x.label, odds: x.odds, p: both ? (1 / x.odds) / book2 : (1 / x.odds) / ASSUMED_MARGIN, est: !both });
+    });
+    return out;
+  }
+  const margin = (m) => { const o = m.odds || {}; return o.home > 1 && o.draw > 1 && o.away > 1 ? 1 / o.home + 1 / o.draw + 1 / o.away - 1 : null; };
+
+  const dt = (iso, timeOk) => {
+    if (!iso) return "Datum saknas";
+    const d = new Date(iso);
+    const day = d.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "short" });
+    return timeOk === false ? `${day} · tid ej bekräftad` : `${day} ${d.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}`;
+  };
+
+  function renderStatus() {
+    const el = $("data-status");
+    if (dbState === "none") { el.textContent = "Matchdatan kunde inte laddas. Öppna sidan inloggad på claude.ai för att se dagens matcher."; return; }
+    if (dbState === "loading") { el.textContent = "Hämtar matchdata …"; return; }
+    const n = upcoming().length;
+    if (!n) { el.textContent = "Inga kommande matcher i datan just nu. Den uppdateras automatiskt varje morgon."; return; }
+    const when = meta && meta.updatedAt ? new Date(meta.updatedAt).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "okänt";
+    el.textContent = `${n} kommande matcher i ${leagues().length} turneringar · uppdaterad ${when}. Kontrollera alltid oddset hos ditt spelbolag innan du spelar.`;
+  }
+
+  function renderChips(elId) {
+    const el = $(elId);
+    el.innerHTML = leagues().map((l) => `<button type="button" class="chip" data-l="${esc(l)}" aria-pressed="${!leagueOff.has(l)}">${esc(l)}</button>`).join("");
+  }
+  function onChip(e) {
+    const b = e.target.closest(".chip"); if (!b) return;
+    const l = b.dataset.l;
+    leagueOff.has(l) ? leagueOff.delete(l) : leagueOff.add(l);
+    try { localStorage.setItem(LEG_KEY, JSON.stringify([...leagueOff])); } catch {}
+    renderAll();
+  }
+  $("a-leagues").addEventListener("click", onChip);
+  $("m-leagues").addEventListener("click", onChip);
+
+  // ---------- matches tab ----------
+  function factsHtml(m) {
+    const rows = [];
+    const inj = m.injuries || {};
+    if (inj.home && inj.home.length) rows.push(`<div><span class="k">${esc(m.home)} saknar:</span> <span class="inj">${esc(inj.home.join(", "))}</span></div>`);
+    if (inj.away && inj.away.length) rows.push(`<div><span class="k">${esc(m.away)} saknar:</span> <span class="inj">${esc(inj.away.join(", "))}</span></div>`);
+    if (m.form && (m.form.home || m.form.away)) rows.push(`<div><span class="k">Form:</span> ${esc(m.form.home || "–")} / ${esc(m.form.away || "–")}</div>`);
+    (m.notes || []).forEach((n) => rows.push(`<div>${esc(n)}</div>`));
+    return rows.join("");
+  }
+  function renderMatches() {
+    renderChips("m-leagues");
+    const list = upcoming().filter((m) => !leagueOff.has(m.league));
+    if (dbState !== "ready" || !list.length) {
+      $("m-list").innerHTML = `<p class="empty">${dbState === "none" ? "Matchdatan kunde inte laddas här." : dbState === "loading" ? "Hämtar matcher …" : "Inga kommande matcher för valda ligor. Datan fylls på automatiskt varje morgon."}</p>`;
+      return;
+    }
+    const groups = {};
+    list.forEach((m) => (groups[m.league] ||= []).push(m));
+    $("m-list").innerHTML = Object.entries(groups).map(([lg, ms]) => `
+      <div class="lg-group"><h3>${esc(lg)}</h3><div class="lg-cards">${ms.map((m) => {
+        const oc = outcomes(m).filter((x) => x.market === "1X2");
+        const by = (s) => oc.find((x) => x.pick.startsWith(s));
+        const cell = (s, lab) => { const x = by(s); return `<div><small>${lab}</small><b>${x ? fmtO(x.odds) : "–"}</b><em>${x ? pct(x.p) : "&nbsp;"}</em></div>`; };
+        const mg = margin(m);
+        const extra = (m.extra || []).map((x) => `${esc(x.label)} ${fmtO(x.odds)}`).join(" · ");
+        return `<article class="mcard">
+          <div class="when">${dt(m.kickoff, m.timeConfirmed)}${mg != null ? ` · marginal ${pct(mg, 1)}` : ""}</div>
+          <div class="teams">${esc(m.home)} – ${esc(m.away)}</div>
+          <div class="oddsrow">${cell("1", "1")}${cell("X", "X")}${cell("2", "2")}</div>
+          ${extra ? `<div class="facts">${extra}</div>` : ""}
+          ${oc.some((x) => x.est) ? `<div class="est">Chans uppskattad, alla odds saknas</div>` : ""}
+          <div class="facts">${factsHtml(m)}</div>
+          ${(m.sources || []).length ? `<div class="srcs">Källor: ${(m.sources || []).map((u) => { let h = u; try { h = new URL(u).hostname.replace(/^www\./, ""); } catch {} return `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(h)}</a>`; }).join(", ")}</div>` : ""}
+        </article>`;
+      }).join("")}</div></div>`).join("");
+  }
+
+  // ---------- suggestion engine ----------
+  // Picks at most one outcome per match so the product of odds lands near the target,
+  // maximising the combined margin-free probability (legs treated as independent).
+  function suggest(target, maxLegs) {
+    const cands = [];
+    upcoming().filter((m) => !leagueOff.has(m.league)).forEach((m, mi) => {
+      outcomes(m).forEach((o) => { if (o.odds >= 1.05 && o.odds <= target * 1.35) cands.push({ ...o, m, mi }); });
+    });
+    cands.sort((a, b) => b.p / b.odds - a.p / a.odds);
+    const lo = target * 0.97, hi = target * 1.3;
+    const found = [];
+    let steps = 0;
+    const rec = (start, legs, prod, prob, used) => {
+      if (++steps > 400000) return;
+      if (prod >= lo && prod <= hi && legs.length) { found.push({ legs: legs.slice(), prod, prob }); }
+      if (legs.length >= maxLegs || prod > hi) return;
+      for (let i = start; i < cands.length; i++) {
+        const c = cands[i];
+        if (used.has(c.mi)) continue;
+        const np = prod * c.odds;
+        if (np > hi) continue;
+        used.add(c.mi); legs.push(c);
+        rec(i + 1, legs, np, prob * c.p, used);
+        legs.pop(); used.delete(c.mi);
+      }
+    };
+    rec(0, [], 1, 1, new Set());
+    found.sort((a, b) => b.prob - a.prob || a.legs.length - b.legs.length);
+    // pick up to 3 suggestions that don't reuse the same matches too much
+    const picked = [];
+    for (const f of found) {
+      const ids = new Set(f.legs.map((l) => l.mi));
+      if (picked.every((p) => p.legs.filter((l) => ids.has(l.mi)).length <= Math.floor(Math.min(p.legs.length, f.legs.length) / 2))) picked.push(f);
+      if (picked.length === 3) break;
+    }
+    return picked;
+  }
+
+  function whyText(m) {
+    const bits = [];
+    const inj = m.injuries || {};
+    if (inj.home && inj.home.length) bits.push(`<b>${esc(m.home)}</b> saknar ${esc(inj.home.slice(0, 3).join(", "))}${inj.home.length > 3 ? " m.fl." : ""}`);
+    if (inj.away && inj.away.length) bits.push(`<b>${esc(m.away)}</b> saknar ${esc(inj.away.slice(0, 3).join(", "))}${inj.away.length > 3 ? " m.fl." : ""}`);
+    if (m.form && (m.form.home || m.form.away)) bits.push(`Form ${esc(m.form.home || "–")} / ${esc(m.form.away || "–")}`);
+    if (m.notes && m.notes[0]) bits.push(esc(m.notes[0]));
+    return bits.join(" · ");
+  }
+
+  let lastSugg = [];
+  function updateNeed() {
+    const st = num($("a-stake").value), tg = num($("a-target").value);
+    const el = $("a-need");
+    if (!(st > 0) || !(tg > st)) { el.innerHTML = "Ange en insats och ett belopp som är större än insatsen."; return null; }
+    const T = tg / st;
+    el.innerHTML = `Det behövs totalodds runt <b>${fmtO(T)}</b>. Det motsvarar en chans på högst cirka <b>${pct(1 / T)}</b> innan spelbolagets marginal.`;
+    return { st, tg, T };
+  }
+  ["a-stake", "a-target"].forEach((id) => $(id).addEventListener("input", updateNeed));
+
+  function renderSuggestions(req) {
+    const out = $("a-out");
+    if (!req) { out.innerHTML = ""; return; }
+    if (dbState !== "ready" || !upcoming().length) {
+      out.innerHTML = `<div class="reality">${dbState === "none" ? "Matchdatan kunde inte laddas här. Öppna sidan inloggad på claude.ai." : "Det finns ingen matchdata att bygga en lapp av ännu."}</div>`;
+      return;
+    }
+    lastSugg = suggest(req.T, +$("a-legs").value);
+    if (!lastSugg.length) {
+      out.innerHTML = `<div class="reality">Hittade ingen kombination nära totalodds ${fmtO(req.T)} bland valda ligor. Prova fler ligor, fler matcher per lapp eller ett annat vinstmål.</div>`;
+      return;
+    }
+    out.innerHTML = lastSugg.map((s, i) => {
+      const per100 = Math.round(s.prob * 100);
+      return `<article class="sugg ${i === 0 ? "best" : ""}">
+        <div class="sugg-head"><h3>${i === 0 ? "Högst chans" : `Alternativ ${i}`}</h3><span class="tot">Odds ${fmtO(s.prod)}</span></div>
+        <div class="chance">
+          <div class="chance-top"><strong>${pct(s.prob)}</strong><span>ungefär ${per100} av 100 sådana lappar går in</span></div>
+          <div class="meter" aria-hidden="true"><i style="width:${Math.min(100, s.prob * 100)}%"></i></div>
+        </div>
+        <ul class="legs">${s.legs.map((l) => `<li>
+          <div style="min-width:0"><div class="lg">${esc(l.m.league)} · ${dt(l.m.kickoff, l.m.timeConfirmed)}</div><div class="mt">${esc(l.m.home)} – ${esc(l.m.away)}</div><div class="pk">${esc(l.market)}: ${esc(l.pick)}</div></div>
+          <div><div class="od">${fmtO(l.odds)}</div><div class="pr">${pct(l.p)}${l.est ? "*" : ""}</div></div>
+          ${whyText(l.m) ? `<div class="why">${whyText(l.m)}</div>` : ""}
+        </li>`).join("")}</ul>
+        <div class="sugg-foot">
+          <span class="pay">${fmtKr(req.st)} → <b>${fmtKr(req.st * s.prod)}</b></span>
+          <button type="button" class="primary" data-i="${i}">Lägg på min lapp</button>
+        </div>
+      </article>`;
+    }).join("") + `<div class="reality"><b>Så räknas chansen:</b> oddsen räknas om till verklig sannolikhet genom att spelbolagets marginal tas bort, och matcherna antas vara oberoende av varandra. Färre matcher ger högre chans vid samma totalodds, eftersom marginalen tas en gång per match. ${lastSugg.some((s) => s.legs.some((l) => l.est)) ? "* = uppskattad chans, alla utfall i marknaden saknades. " : ""}I snitt får man tillbaka mindre än man satsar. Spela bara för pengar du har råd att förlora. Stödlinjen: 020-819 100.</div>`;
+    lastReq = req;
+  }
+  let lastReq = null;
+  $("a-go").addEventListener("click", () => renderSuggestions(updateNeed()));
+  $("a-out").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-i]"); if (!b || !lastReq) return;
+    const s = lastSugg[+b.dataset.i]; if (!s) return;
+    window.oddslappen.addSlip({
+      name: `${fmtKr(lastReq.st)} → ${fmtKr(lastReq.tg)}`,
+      stake: lastReq.st,
+      sels: s.legs.map((l) => ({ event: `${l.m.home} – ${l.m.away}`, market: l.market, pick: l.pick, odds: Math.round(l.odds * 100) / 100 }))
+    });
+    showTab("lapp");
+  });
+
+  function renderAll() {
+    renderStatus();
+    renderChips("a-leagues");
+    renderMatches();
+    if (lastReq) renderSuggestions(updateNeed()); else updateNeed();
+  }
+  renderAll();
+
+  // ---------- connect to the shared store ----------
+  (async () => {
+    const use = window.claude && window.claude.use;
+    const db = use ? await window.claude.use("db") : null;
+    if (!db) { dbState = "none"; renderAll(); return; }
+    db.collection("matches").onSnapshot((snap) => {
+      matches = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      dbState = "ready";
+      if (!lastReq) { const r = updateNeed(); if (r && matches.length) renderSuggestions(r); }
+      renderAll();
+    }, () => { dbState = "none"; renderAll(); });
+    db.doc("meta/status").onSnapshot((d) => { meta = d.exists ? d.data() : null; renderStatus(); }, () => {});
+    const user = await window.claude.use("user");
+    const uid = user ? await user.id() : null;
+    if (uid && window.oddslappen) {
+      try { window.oddslappen.connectSaved(db.collection("data/users/" + uid)); } catch {}
+    }
+  })();
 })();
 </script>
