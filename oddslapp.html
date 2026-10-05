@@ -164,6 +164,8 @@ button.big { padding: 11px 22px; font-size: 1rem; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .chip { font-size: .82rem; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--field); color: var(--muted); }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chips + .chips { margin-top: 8px; }
+.chip.mk[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .data-status { font-size: .8rem; color: var(--muted); margin: 12px 0 0; }
 
 /* suggestions */
@@ -209,6 +211,12 @@ button.big { padding: 11px 22px; font-size: 1rem; }
 .facts { font-size: .84rem; display: grid; gap: 4px; }
 .facts .k { font-weight: 600; }
 .facts .inj { color: var(--loss); }
+.stats { font-size: .84rem; display: grid; gap: 4px; background: var(--field); border-radius: 6px; padding: 8px 10px; }
+.stats .k { font-weight: 600; }
+.mk-list { display: grid; gap: 4px; font-size: .86rem; }
+.mk-list div { display: flex; justify-content: space-between; gap: 10px; }
+.mk-list b { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mk-list span.g { font-size: .7rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
 .srcs { font-size: .75rem; color: var(--muted); overflow-wrap: anywhere; }
 .srcs a { color: var(--muted); }
 .est { font-size: .7rem; color: var(--open); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
@@ -240,6 +248,7 @@ button.big { padding: 11px 22px; font-size: 1rem; }
         <button type="button" class="primary big" id="a-go">Föreslå lapp</button>
       </div>
       <p class="need" id="a-need"></p>
+      <div class="chips" id="a-markets" aria-label="Speltyper"></div>
       <div class="chips" id="a-leagues" aria-label="Ligor"></div>
       <p class="data-status" id="data-status">Hämtar matchdata …</p>
     </div>
@@ -728,6 +737,20 @@ button.big { padding: 11px 22px; font-size: 1rem; }
   const fmtKr = (n) => Math.round(n).toLocaleString("sv-SE") + " kr";
   const pct = (p, d = 0) => (p * 100).toLocaleString("sv-SE", { maximumFractionDigits: d }) + " %";
   const ASSUMED_MARGIN = 1.06; // used when only one side of a market is known
+  const SPECIAL_MARGIN = 1.09; // corners and cards usually carry a bigger margin
+  const MK_KEY = "oddslappen.markets";
+  const GROUPS = [["1X2", "Matchvinnare"], ["Mål", "Mål"], ["BLGM", "Båda lagen gör mål"], ["Hörnor", "Hörnor"], ["Kort", "Kort"], ["Övrigt", "Övrigt"]];
+  const groupOf = (market, label) => {
+    const t = `${market} ${label}`.toLowerCase();
+    if (market === "1X2") return "1X2";
+    if (/hörn|corner/.test(t)) return "Hörnor";
+    if (/kort|card|varning/.test(t)) return "Kort";
+    if (/båda lagen|blgm|btts/.test(t)) return "BLGM";
+    if (/mål|över|under|goal/.test(t)) return "Mål";
+    return "Övrigt";
+  };
+  let marketOff = new Set();
+  try { marketOff = new Set(JSON.parse(localStorage.getItem(MK_KEY) || "[]")); } catch {}
   const TAB_KEY = "oddslappen.tab";
   const LEG_KEY = "oddslappen.leagues";
 
@@ -763,14 +786,16 @@ button.big { padding: 11px 22px; font-size: 1rem; }
     const book = full ? keys.reduce((s, [k]) => s + 1 / o[k], 0) : null;
     keys.forEach(([k, sign, label]) => {
       if (!(o[k] > 1)) return;
-      out.push({ market: "1X2", pick: `${sign} (${k === "draw" ? "oavgjort" : label + " vinner"})`, odds: o[k],
+      out.push({ market: "1X2", group: "1X2", pick: `${sign} (${k === "draw" ? "oavgjort" : label + " vinner"})`, odds: o[k],
         p: full ? (1 / o[k]) / book : (1 / o[k]) / ASSUMED_MARGIN, est: !full });
     });
     (m.extra || []).forEach((x) => {
       if (!(x.odds > 1)) return;
       const both = x.opp > 1;
       const book2 = both ? 1 / x.odds + 1 / x.opp : null;
-      out.push({ market: x.market || "Annat", pick: x.label, odds: x.odds, p: both ? (1 / x.odds) / book2 : (1 / x.odds) / ASSUMED_MARGIN, est: !both });
+      const g = groupOf(x.market || "", x.label || "");
+      const mg = g === "Hörnor" || g === "Kort" ? SPECIAL_MARGIN : ASSUMED_MARGIN;
+      out.push({ market: x.market || "Annat", pick: x.label, odds: x.odds, group: g, p: both ? (1 / x.odds) / book2 : (1 / x.odds) / mg, est: !both });
     });
     return out;
   }
@@ -805,6 +830,16 @@ button.big { padding: 11px 22px; font-size: 1rem; }
     renderAll();
   }
   $("a-leagues").addEventListener("click", onChip);
+  function renderMarketChips() {
+    $("a-markets").innerHTML = GROUPS.map(([k, lab]) => `<button type="button" class="chip mk" data-k="${k}" aria-pressed="${!marketOff.has(k)}">${lab}</button>`).join("");
+  }
+  $("a-markets").addEventListener("click", (e) => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    const k = b.dataset.k;
+    marketOff.has(k) ? marketOff.delete(k) : marketOff.add(k);
+    try { localStorage.setItem(MK_KEY, JSON.stringify([...marketOff])); } catch {}
+    renderAll();
+  });
   $("m-leagues").addEventListener("click", onChip);
 
   // ---------- matches tab ----------
@@ -816,6 +851,12 @@ button.big { padding: 11px 22px; font-size: 1rem; }
     if (m.form && (m.form.home || m.form.away)) rows.push(`<div><span class="k">Form:</span> ${esc(m.form.home || "–")} / ${esc(m.form.away || "–")}</div>`);
     (m.notes || []).forEach((n) => rows.push(`<div>${esc(n)}</div>`));
     return rows.join("");
+  }
+  const STAT_LABEL = { goals: "Mål", corners: "Hörnor", cards: "Kort", referee: "Domare" };
+  function statsHtml(m) {
+    const st = m.stats || {};
+    const rows = Object.keys(STAT_LABEL).filter((k) => st[k]).map((k) => `<div><span class="k">${STAT_LABEL[k]}:</span> ${esc(st[k])}</div>`);
+    return rows.length ? `<div class="stats">${rows.join("")}</div>` : "";
   }
   function renderMatches() {
     renderChips("m-leagues");
@@ -832,12 +873,13 @@ button.big { padding: 11px 22px; font-size: 1rem; }
         const by = (s) => oc.find((x) => x.pick.startsWith(s));
         const cell = (s, lab) => { const x = by(s); return `<div><small>${lab}</small><b>${x ? fmtO(x.odds) : "–"}</b><em>${x ? pct(x.p) : "&nbsp;"}</em></div>`; };
         const mg = margin(m);
-        const extra = (m.extra || []).map((x) => `${esc(x.label)} ${fmtO(x.odds)}`).join(" · ");
+        const extra = outcomes(m).filter((x) => x.market !== "1X2").map((x) => `<div><span><span class="g">${esc(GROUPS.find((g) => g[0] === x.group)[1])}</span>${esc(x.pick)}</span><b>${fmtO(x.odds)} · ${pct(x.p)}${x.est ? "*" : ""}</b></div>`).join("");
         return `<article class="mcard">
           <div class="when">${dt(m.kickoff, m.timeConfirmed)}${mg != null ? ` · marginal ${pct(mg, 1)}` : ""}</div>
           <div class="teams">${esc(m.home)} – ${esc(m.away)}</div>
           <div class="oddsrow">${cell("1", "1")}${cell("X", "X")}${cell("2", "2")}</div>
-          ${extra ? `<div class="facts">${extra}</div>` : ""}
+          ${extra ? `<div class="mk-list">${extra}</div>` : ""}
+          ${statsHtml(m)}
           ${oc.some((x) => x.est) ? `<div class="est">Chans uppskattad, alla odds saknas</div>` : ""}
           <div class="facts">${factsHtml(m)}</div>
           ${(m.sources || []).length ? `<div class="srcs">Källor: ${(m.sources || []).map((u) => { let h = u; try { h = new URL(u).hostname.replace(/^www\./, ""); } catch {} return `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(h)}</a>`; }).join(", ")}</div>` : ""}
@@ -851,7 +893,7 @@ button.big { padding: 11px 22px; font-size: 1rem; }
   function suggest(target, maxLegs) {
     const cands = [];
     upcoming().filter((m) => !leagueOff.has(m.league)).forEach((m, mi) => {
-      outcomes(m).forEach((o) => { if (o.odds >= 1.05 && o.odds <= target * 1.35) cands.push({ ...o, m, mi }); });
+      outcomes(m).forEach((o) => { if (marketOff.has(o.group)) return; if (o.odds >= 1.05 && o.odds <= target * 1.35) cands.push({ ...o, m, mi }); });
     });
     cands.sort((a, b) => b.p / b.odds - a.p / a.odds);
     const lo = target * 0.97, hi = target * 1.3;
@@ -883,8 +925,12 @@ button.big { padding: 11px 22px; font-size: 1rem; }
     return picked;
   }
 
-  function whyText(m) {
+  function whyText(m, leg) {
     const bits = [];
+    const st = m.stats || {};
+    const key = leg && { "Hörnor": "corners", "Kort": "cards", "Mål": "goals", "BLGM": "goals" }[leg.group];
+    if (key && st[key]) bits.push(esc(st[key]));
+    if (leg && leg.group === "Kort" && st.referee) bits.push(`Domare: ${esc(st.referee)}`);
     const inj = m.injuries || {};
     if (inj.home && inj.home.length) bits.push(`<b>${esc(m.home)}</b> saknar ${esc(inj.home.slice(0, 3).join(", "))}${inj.home.length > 3 ? " m.fl." : ""}`);
     if (inj.away && inj.away.length) bits.push(`<b>${esc(m.away)}</b> saknar ${esc(inj.away.slice(0, 3).join(", "))}${inj.away.length > 3 ? " m.fl." : ""}`);
@@ -927,14 +973,14 @@ button.big { padding: 11px 22px; font-size: 1rem; }
         <ul class="legs">${s.legs.map((l) => `<li>
           <div style="min-width:0"><div class="lg">${esc(l.m.league)} · ${dt(l.m.kickoff, l.m.timeConfirmed)}</div><div class="mt">${esc(l.m.home)} – ${esc(l.m.away)}</div><div class="pk">${esc(l.market)}: ${esc(l.pick)}</div></div>
           <div><div class="od">${fmtO(l.odds)}</div><div class="pr">${pct(l.p)}${l.est ? "*" : ""}</div></div>
-          ${whyText(l.m) ? `<div class="why">${whyText(l.m)}</div>` : ""}
+          ${whyText(l.m, l) ? `<div class="why">${whyText(l.m, l)}</div>` : ""}
         </li>`).join("")}</ul>
         <div class="sugg-foot">
           <span class="pay">${fmtKr(req.st)} → <b>${fmtKr(req.st * s.prod)}</b></span>
           <button type="button" class="primary" data-i="${i}">Lägg på min lapp</button>
         </div>
       </article>`;
-    }).join("") + `<div class="reality"><b>Så räknas chansen:</b> oddsen räknas om till verklig sannolikhet genom att spelbolagets marginal tas bort, och matcherna antas vara oberoende av varandra. Färre matcher ger högre chans vid samma totalodds, eftersom marginalen tas en gång per match. ${lastSugg.some((s) => s.legs.some((l) => l.est)) ? "* = uppskattad chans, alla utfall i marknaden saknades. " : ""}I snitt får man tillbaka mindre än man satsar. Spela bara för pengar du har råd att förlora. Stödlinjen: 020-819 100.</div>`;
+    }).join("") + `<div class="reality"><b>Så räknas chansen:</b> oddsen räknas om till verklig sannolikhet genom att spelbolagets marginal tas bort, och matcherna antas vara oberoende av varandra. Färre matcher ger högre chans vid samma totalodds, eftersom marginalen tas en gång per match. Lappen tar högst ett spel per match, eftersom flera spel i samma match (t.ex. vinst + hörnor) hänger ihop och inte kan räknas ihop rakt av. Hörn- och kortspel har oftast större marginal än vanliga matchodds. ${lastSugg.some((s) => s.legs.some((l) => l.est)) ? "* = uppskattad chans, alla utfall i marknaden saknades. " : ""}I snitt får man tillbaka mindre än man satsar. Spela bara för pengar du har råd att förlora. Stödlinjen: 020-819 100.</div>`;
     lastReq = req;
   }
   let lastReq = null;
@@ -953,6 +999,7 @@ button.big { padding: 11px 22px; font-size: 1rem; }
   function renderAll() {
     renderStatus();
     renderChips("a-leagues");
+    renderMarketChips();
     renderMatches();
     if (lastReq) renderSuggestions(updateNeed()); else updateNeed();
   }
