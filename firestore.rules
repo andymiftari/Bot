@@ -189,7 +189,13 @@ service cloud.firestore {
     // Mallbank för mätaravläsningen, en per bil. Alla inloggade förare lär upp
     // den när de sparar en mätarställning. Bara superadmin kan ta bort den.
     match /ocrbanks/{vehId} {
-      allow read, create, update: if signedIn();
+      allow get: if signedIn();
+      allow create, update: if signedIn()
+        && exists(/databases/$(database)/documents/employees/$(request.auth.uid))
+        && exists(/databases/$(database)/documents/vehicles/$(vehId))
+        && request.resource.data.keys().hasOnly(['digits', 'vehicleId', 'lastKm'])
+        && request.resource.data.vehicleId == vehId
+        && request.resource.data.lastKm is number;
       allow delete: if isAdmin();
     }
 

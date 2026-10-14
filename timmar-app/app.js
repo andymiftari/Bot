@@ -15,7 +15,6 @@ import {
 import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL, SYNC_TOKEN }
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
-import { readOdometer, learn, bankFromDoc, bankToDoc, bankSize, repairPlain } from "./ocr.js";
 
 export const APP_VERSION = "2.6";
 const BOOT_AT = Date.now();
@@ -1753,6 +1752,7 @@ function scanModal(vehId, phase, err){
   S.scan = {vehId:vehId, phase:phase, stream:null,
             photo:(keep&&keep.photo)||"", km:(keep&&keep.km)||"", cells:(keep&&keep.cells)||null};
   /* bilens mallbank hämtas i bakgrunden medan kameran startar */
+  if(S.ocrBanks) delete S.ocrBanks[vehId];   /* färsk lastKm varje gång */
   loadOcrBank(vehId).catch(function(){});
 
   const projOpts = '<option value="">Inget projekt</option>'
@@ -1888,19 +1888,28 @@ function boostContrast(cv){
    3. Rimlighet: förra ställningen (vid start) eller startvärdet (vid slut) låser
       de första siffrorna, så att trippmätare, klocka och räckvidd sorteras bort.
    Föraren bekräftar alltid värdet innan det sparas. */
-async function loadOcrBank(vid){
+let ocrMod=null;
+async function ocrLib(){ if(!ocrMod) ocrMod=await import("./ocr.js"); return ocrMod; }
+/* Laddningen cachas som löfte så att samtidiga anrop delar på samma läsning.
+   Misslyckas den cachas inget, och banken skrivs då aldrig över. */
+function loadOcrBank(vid){
   S.ocrBanks=S.ocrBanks||{};
   if(S.ocrBanks[vid]) return S.ocrBanks[vid];
-  let d=null; try{ d=await Store.get("ocrbanks/"+vid); }catch(e){ d=null; }
-  const ob={bank:bankFromDoc(d), lastKm:+(d&&d.lastKm)||0};
-  S.ocrBanks[vid]=ob;
-  return ob;
+  const p=(async function(){
+    const O=await ocrLib();
+    let d=null;
+    try{ d=await Store.get("ocrbanks/"+vid); }
+    catch(e){ delete S.ocrBanks[vid]; return {bank:O.bankFromDoc(null), lastKm:0, failed:true}; }
+    return {bank:O.bankFromDoc(d), lastKm:+(d&&d.lastKm)||0};
+  })();
+  S.ocrBanks[vid]=p;
+  return p;
 }
 /* Senast kända mätarställning för bilen: egna resor och bilens delade senaste värde. */
 function vehLastKm(vid){
   let m=0;
   (S.trips||[]).forEach(function(t){ if(t.vehicleId===vid) m=Math.max(m, +t.endKm||0, +t.startKm||0); });
-  const ob=(S.ocrBanks||{})[vid]; if(ob && ob.lastKm) m=Math.max(m, ob.lastKm);
+  const ob=(S.ocrBanksReady||{})[vid]; if(ob && ob.lastKm) m=Math.max(m, ob.lastKm);
   return m;
 }
 function copyCanvas(cv){
@@ -1908,21 +1917,29 @@ function copyCanvas(cv){
   c.getContext("2d").drawImage(cv,0,0); return c;
 }
 async function readMeter(cv, scan){
+  let O=null; try{ O=await ocrLib(); }catch(e){ O=null; }
+  let ob=null; try{ ob=await loadOcrBank(scan.vehId); }catch(e){ ob=null; }
+  if(ob){ S.ocrBanksReady=S.ocrBanksReady||{}; S.ocrBanksReady[scan.vehId]=ob; }
+  /* referensen räknas först när bilens delade senaste värde är laddat */
   const ref = scan.phase==="slut" ? (+(openTripHere(scan.vehId)||{}).startKm||0) : vehLastKm(scan.vehId);
   const refTxt = ref ? mfm.format(ref)+" km" : "";
-  let ob=null; try{ ob=await loadOcrBank(scan.vehId); }catch(e){ ob=null; }
   /* 1. mallbanken */
   let r=null;
-  try{ r=readOdometer(copyCanvas(cv), ob?ob.bank:{}, ref); }catch(e){ console.warn("ocr.js", e); r=null; }
+  try{ if(O) r=O.readOdometer(copyCanvas(cv), ob?ob.bank:{}, ref); }catch(e){ console.warn("ocr.js", e); r=null; }
   scan.cells = (r && r.cells && r.cells.length) ? r.cells : null;
+  scan.readText = "";
   if(r && r.source==="bank" && r.ok && r.confidence>=0.35 && /^\d{4,7}$/.test(r.text)){
+    scan.readText = r.text;
     return {value:r.text, hint:"Avläst: "+mfm.format(+r.text)+" km. Känd från bilens tidigare avläsningar. Stämmer det med mätaren?"};
   }
   /* 2. allmän sifferavläsning, rättad mot referensen */
   let raw="";
   try{ raw=await ocrDigits(boostContrast(cv)); }catch(e){ raw=""; if(!r) throw e; }
-  const fix=repairPlain(raw, ref);
-  const trained = ob ? bankSize(ob.bank) : 0;
+  scan.readText = raw;
+  /* en siffra för mycket sist är oftast tiondelen */
+  if(ref && raw.length===String(ref).length+1 && O && O.plausible(+raw.slice(0,-1), ref)) raw=raw.slice(0,-1);
+  const fix=O ? O.repairPlain(raw, ref) : null;
+  const trained = (ob && O) ? O.bankSize(ob.bank) : 0;
   const learnNote = trained<10 ? " Appen lär sig bilens siffror när du sparar." : "";
   if(fix && fix.ok && /^\d{4,7}$/.test(fix.text)){
     if(fix.rattad) return {value:fix.text, hint:"Förslag: "+mfm.format(fix.value)+" km. "+(fix.avstand===1?"En siffra":"Två siffror")
@@ -1936,18 +1953,24 @@ async function readMeter(cv, scan){
 }
 /* Lär banken det bekräftade värdet. Rutorna kommer från fotot i den här
    dialogen; finns en ruta för mycket sist är det tiondelen, som hoppas över. */
-async function ocrLearnAfterSave(vid, km){
+/* Lär in bara när fotot faktiskt visade det sparade värdet: samma antal
+   siffror och högst en som skiljer. Banken läses färskt precis innan, så
+   andra förares inlärning inte skrivs över. */
+async function ocrLearnAfterSave(vid, km, cells, readText){
   try{
-    const ob=await loadOcrBank(vid);
-    const cells=S.scan && S.scan.vehId===vid ? S.scan.cells : null;
-    const txt=String(km);
-    if(cells && cells.length){
-      if(cells.length===txt.length) learn(ob.bank, cells, txt);
-      else if(cells.length===txt.length+1) learn(ob.bank, cells.slice(0, txt.length), txt);
-    }
-    ob.lastKm=km;
-    await Store.set("ocrbanks/"+vid, Object.assign(bankToDoc(ob.bank),
-      {vehicleId:vid, lastKm:km, updatedAt:new Date().toISOString(), byId:S.me?S.me.id:""}));
+    const O=await ocrLib();
+    let d; try{ d=await Store.get("ocrbanks/"+vid); }catch(e){ return; }
+    const bank=O.bankFromDoc(d), oldLast=+(d&&d.lastKm)||0;
+    const txt=String(km), seen=String(readText||"");
+    const close = seen.length===txt.length && [...txt].filter((c,i)=>c!==seen[i]).length<=1;
+    let learned=false;
+    if(close && cells && cells.length===txt.length){ O.learn(bank, cells, txt); learned=true; }
+    else if(close && cells && cells.length===txt.length+1){ O.learn(bank, cells.slice(0, txt.length), txt); learned=true; }
+    /* ett skrivfel får inte bli alla förares referens */
+    const newLast = (!oldLast || O.plausible(km, oldLast)) ? km : oldLast;
+    if(!learned && newLast===oldLast) return;
+    await Store.set("ocrbanks/"+vid, Object.assign(O.bankToDoc(bank), {vehicleId:vid, lastKm:newLast}));
+    if(S.ocrBanks) delete S.ocrBanks[vid];
   }catch(e){ console.warn("Körjournal: kunde inte spara mallbanken –", (e&&e.message)||e); }
 }
 let ocrWorker=null;
@@ -3857,9 +3880,11 @@ document.addEventListener("click", async function(ev){
     if(hint) hint.textContent="Läser av siffrorna…";
     try{
       const scan=S.scan;
+      const before=(document.getElementById("sc-km")||{}).value||"";
       const res=await readMeter(cv, scan);
       if(S.scan!==scan) return;            /* dialogen har stängts eller bytts under tiden */
       const box=document.getElementById("sc-km");
+      if(box && box.value!==before){ if(hint) hint.textContent="Du har skrivit in ett värde – det används."; updateCalc(); return; }
       if(res.value){
         if(box){ box.value=res.value; scan.km=res.value; }
         if(hint) hint.textContent=res.hint;
@@ -3878,10 +3903,13 @@ document.addEventListener("click", async function(ev){
   if(act==="scsave"){
     const vid=t.dataset.v, phase=t.dataset.p, v=vehById(vid);
     if(!v) return;
+    if(S.scan && S.scan.saving) return;
+    const ocrCells=S.scan&&S.scan.vehId===vid?S.scan.cells:null, ocrRead=S.scan&&S.scan.vehId===vid?S.scan.readText:"";
     const raw=(document.getElementById("sc-km")||{}).value||"";
     const km=parseInt(String(raw).replace(/\D/g,""),10);
     if(!km || isNaN(km)) return scanModal(vid, phase, "Fyll i mätarställningen i kilometer.");
     const photo=(S.scan&&S.scan.photo)||"";
+    if(S.scan) S.scan.saving=true;
     if(phase==="start"){
       const id=slug("resa-"+v.regnr);
       const body={id:id, vehicleId:vid, regnr:v.regnr, empId:S.me.id, empName:S.me.name,
@@ -3896,8 +3924,9 @@ document.addEventListener("click", async function(ev){
         if(photo) await saveTripPhoto(id, S.me.id, "start", photo);
         S.trips.unshift(body);
       }, "Resan är startad vid "+mfm.format(km)+" km.");
+      if(S.scan) S.scan.saving=false;
       if(!ok) return;
-      await ocrLearnAfterSave(vid, km);
+      ocrLearnAfterSave(vid, km, ocrCells, ocrRead);
     }else{
       const prev=openTripHere(vid);
       if(!prev) return scanModal(vid, phase, "Resan hittades inte längre.");
@@ -3912,8 +3941,9 @@ document.addEventListener("click", async function(ev){
         const i=S.trips.findIndex(x=>x.id===prev.id);
         if(i>=0) S.trips[i]=body;
       }, "Resan är sparad: "+mfm.format(body.km)+" km ("+fmt(milOf(body.km))+" mil).");
+      if(S.scan) S.scan.saving=false;
       if(!ok) return;
-      await ocrLearnAfterSave(vid, km);
+      ocrLearnAfterSave(vid, km, ocrCells, ocrRead);
     }
     closeModal(); render(); return;
   }

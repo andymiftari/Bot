@@ -390,7 +390,10 @@ export function repairPlain(raw, last){
   let best = null;
   for (let v = last; v <= last + MAX_JUMP; v++) {
     const t = String(v);
+    /* bara rättningar av samma längd, eller en saknad/extra siffra */
+    if (Math.abs(t.length - s.length) > 1) continue;
     const d = editDist(s, t);
+    if (t.length !== s.length && d > 1) continue;
     if (!best || d < best.d) { best = { text: t, value: v, d: d }; if (d === 0) break; }
   }
   if (best && best.d <= 2)
