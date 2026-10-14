@@ -109,7 +109,9 @@ service cloud.firestore {
     // superadmin ändrar.
     match /projects/{projectId} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow create, update: if isAdmin();
+      // Avslutade projekt ligger i arkivet och får aldrig tas bort.
+      allow delete: if isAdmin() && resource.data.get('status', 'aktiv') != 'avslutad';
     }
 
     // Tidrapporter: en post per person och månad, id "<uid>__<ÅÅÅÅ-MM>".

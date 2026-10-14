@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.3";
+export const APP_VERSION = "2.4";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -72,6 +72,13 @@ const STATUS = {
   retur:     {label:"Returnerad", cls:"dash"}
 };
 const PSTATUS = {aktiv:"Aktivt", vilande:"Vilande", avslutad:"Avslutat"};
+/* Fakturastatus per projekt. "Ej skapad faktura" är förvalet. */
+const INVSTATUS = {ej:"Ej skapad faktura", skapad:"Faktura skapad", fakturerad:"Fakturerad"};
+const pStatus = p => (p && p.status) || "aktiv";
+/* Aktivt = grönt, vilande = gult, avslutat = neutralt. */
+const pStatusPill = p => '<span class="pill'+(({aktiv:" ok", vilande:" warn"})[pStatus(p)]||"")+'">'+PSTATUS[pStatus(p)]+'</span>';
+const invSelect = p => '<select class="inv inv-'+esc(p.invoice||"ej")+'" data-p="'+esc(p.id)+'" aria-label="Fakturastatus för '+esc(p.name)+'">'
+  + Object.keys(INVSTATUS).map(k=>'<option value="'+k+'"'+((p.invoice||"ej")===k?" selected":"")+'>'+INVSTATUS[k]+'</option>').join("")+'</select>';
 const BUILTIN_COSTS = {
   material:  {label:"Material",        unit:"st",  price:0,  bill:true},
   mil:       {label:"Milersättning",   unit:"mil", price:25, bill:true},
@@ -1054,7 +1061,10 @@ function viewProjekt(){
   /* Superadmin och support ser pengar: timmar gånger timpris plus kostnader.
      Arbetare ser bara timmar, aldrig vad projektet är värt. */
   let sumPeriod=0, sumAll=0;
-  const rows=S.projects.map(p=>{
+  /* Avslutade projekt ligger i Arkiv, inte i listan. */
+  const list=S.projects.filter(p=>pStatus(p)!=="avslutad");
+  const archived=S.projects.length-list.length;
+  const rows=list.map(p=>{
     const tp=projectTotals(p.id,dates), all=projectTotals(p.id,null);
     const rate=+p.rate||0;
     const cP=costTotals(costsFor(p.id,dates)).sum, cA=costTotals(costsFor(p.id,null)).sum;
@@ -1063,17 +1073,18 @@ function viewProjekt(){
     const cols = admin
       ? '<td class="r">'+kr(amtP)+'</td><td class="r"><b>'+kr(amtA)+'</b></td>'
       : '<td class="r">'+fmt(tp.hours)+'</td><td class="r">'+fmt(all.hours)+'</td>';
-    return '<tr><td><span class="code">'+esc(p.kod||"—")+'</span></td>'
+    return '<tr class="p-'+pStatus(p)+'"><td><span class="code">'+esc(p.kod||"—")+'</span></td>'
       + '<td><b>'+esc(p.name)+'</b>'+(p.adress?'<div class="note">'+esc(p.adress)+'</div>':'')+'</td>'
       + '<td>'+esc(p.kund||"—")+'</td>'
-      + '<td><span class="pill'+(p.status==="aktiv"?" solid":p.status==="avslutad"?"":" dash")+'">'+PSTATUS[p.status||"aktiv"]+'</span></td>'
+      + '<td>'+pStatusPill(p)+'</td>'
+      + (admin?'<td>'+invSelect(p)+'</td>':'')
       + cols
       + (admin?'<td class="r">'+fmt(tp.hours)+'</td>':'')
       + '<td class="r" style="white-space:nowrap"><button class="btn sm" data-act="openproj" data-p="'+p.id+'">Öppna</button>'
       + (admin?' <button class="btn sm ghost" data-act="editproj" data-p="'+p.id+'">Ändra</button>':'')+'</td></tr>';
   }).join("");
   sumPeriod=r2(sumPeriod); sumAll=r2(sumAll);
-  const totalAll=S.projects.reduce((a,p)=>a+projectTotals(p.id,dates).hours,0);
+  const totalAll=list.reduce((a,p)=>a+projectTotals(p.id,dates).hours,0);
   return '<div class="bar">'
     + (S.projPeriod==="range"?''
        :'<div class="navgroup"><button class="btn sm" data-act="prev">‹</button>'
@@ -1085,14 +1096,16 @@ function viewProjekt(){
             :'<span class="note" style="margin-left:auto">Endast superadmin kan skapa projekt</span>')
     + '</div>'
     + '<div class="tblwrap"><table class="tbl"><thead><tr><th>Kod</th><th>Projekt</th><th>Kund</th><th>Status</th>'
-    + (admin?'<th class="r">Att fakturera i period</th><th class="r">Att fakturera totalt</th><th class="r">Timmar i period</th>'
+    + (admin?'<th>Faktura</th><th class="r">Att fakturera i period</th><th class="r">Att fakturera totalt</th><th class="r">Timmar i period</th>'
             :'<th class="r">Mina timmar i period</th><th class="r">Mina timmar totalt</th>')
     + '<th></th></tr>'
-    + (admin&&S.projects.length?'<tr class="sumrow"><th colspan="4">Summa alla projekt</th>'
+    + (admin&&list.length?'<tr class="sumrow"><th colspan="5">Summa alla projekt</th>'
         + '<th class="r">'+kr(sumPeriod)+'</th><th class="r">'+kr(sumAll)+'</th><th></th><th></th></tr>':'')
     + '</thead>'
-    + '<tbody>'+(rows||'<tr><td colspan="'+(admin?8:7)+'" class="empty">Inga projekt upplagda ännu.'+(admin?' Skapa det första med knappen ovan.':'')+'</td></tr>')+'</tbody></table>'
-    + '</div>';
+    + '<tbody>'+(rows||'<tr><td colspan="'+(admin?9:7)+'" class="empty">'+(archived?'Inga aktiva eller vilande projekt.':'Inga projekt upplagda ännu.')+(admin?' Skapa ett nytt med knappen ovan.':'')+'</td></tr>')+'</tbody></table>'
+    + '</div>'
+    + (admin&&archived?'<p class="note" style="margin-top:10px">'+archived+' avslutade projekt ligger i arkivet med all tid och alla kostnader kvar. '
+      + '<button class="btn sm" data-act="tab" data-v="arkiv">Öppna arkivet</button></p>':'');
 }
 function projectDetail(pid){
   const p=projById(pid);
@@ -1137,7 +1150,10 @@ function projectDetail(pid){
     + '<span class="code">'+esc(p.kod||"—")+'</span>'
     + '<h2 style="font-size:24px;margin:8px 0 4px">'+esc(p.name)+'</h2>'
     + '<p class="note">'+esc(p.kund||"Ingen kund angiven")+(p.adress?' · '+esc(p.adress):'')
-    + ' · '+PSTATUS[p.status||"aktiv"]+(admin&&p.rate?' · '+kr(p.rate)+'/h':'')+'</p>'
+    + (admin&&p.rate?' · '+kr(p.rate)+'/h':'')+'</p>'
+    + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">'+pStatusPill(p)
+    + (admin?invSelect(p):'')
+    + (pStatus(p)==="avslutad"?'<span class="note">Avslutat'+(p.archivedAt?' '+esc(String(p.archivedAt).slice(0,10)):'')+' · ligger i arkivet</span>':'')+'</div>'
     + (p.notes?'<p style="margin-top:8px">'+esc(p.notes)+'</p>':'')+'</div>'
     + '<div class="kpis" style="margin-bottom:14px">'
     + '<div class="kpi"><span class="eyebrow">'+(admin?'Timmar i period':'Mina timmar i period')+'</span><div class="v">'+fmt(src.hours)+'<s>h</s></div></div>'
@@ -1460,7 +1476,7 @@ function empModal(empId, err){
     });
 }
 function projModal(pid){
-  const p = pid ? projById(pid) : {name:"",kod:"",kund:"",adress:"",status:"aktiv",rate:"",notes:""};
+  const p = pid ? projById(pid) : {name:"",kod:"",kund:"",adress:"",status:"aktiv",rate:"",notes:"",invoice:"ej"};
   openModal('<div class="mh"><h3>'+(pid?"Redigera projekt":"Nytt projekt")+'</h3><button class="btn sm ghost" data-act="close">Stäng</button></div>'
     + '<div class="mb"><div class="stack">'
     + '<label class="fld"><span class="eyebrow">Projektnamn</span><input id="p-name" type="text" value="'+esc(p.name)+'" placeholder="Räcken Kv. Smedjan"></label>'
@@ -1470,9 +1486,12 @@ function projModal(pid){
     + '<label class="fld"><span class="eyebrow">Arbetsplats / adress</span><input id="p-adress" type="text" value="'+esc(p.adress||"")+'"></label>'
     + '<label class="fld"><span class="eyebrow">Status</span><select id="p-status">'
     + Object.keys(PSTATUS).map(k=>'<option value="'+k+'"'+((p.status||"aktiv")===k?" selected":"")+'>'+PSTATUS[k]+'</option>').join("")+'</select></label>'
+    + '<label class="fld"><span class="eyebrow">Faktura</span><select id="p-invoice">'
+    + Object.keys(INVSTATUS).map(k=>'<option value="'+k+'"'+((p.invoice||"ej")===k?" selected":"")+'>'+INVSTATUS[k]+'</option>').join("")+'</select></label>'
+    + '<p class="note">Avslutade projekt flyttas till Arkiv. All tid och alla kostnader ligger kvar och kan alltid tas fram igen.</p>'
     + '<label class="fld"><span class="eyebrow">Anteckning</span><textarea id="p-notes" rows="3">'+esc(p.notes||"")+'</textarea></label>'
     + '</div></div>'
-    + '<div class="mf">'+(pid?'<button class="btn ghost" data-act="delproj" data-p="'+pid+'">Ta bort</button>':'')
+    + '<div class="mf">'+(pid&&pStatus(p)!=="avslutad"?'<button class="btn ghost" data-act="delproj" data-p="'+pid+'">Ta bort</button>':'')
     + '<button class="btn" data-act="close">Avbryt</button>'
     + '<button class="btn primary" data-act="saveproj" data-p="'+(pid||"")+'">Spara projekt</button></div>', function(){
       const n=document.getElementById("p-name"); if(n) n.focus();
@@ -2391,6 +2410,33 @@ async function moveArchiveData(){
     }
   }finally{ movingArchive=false; }
 }
+/* Har projektet tid eller kostnader? Då får det aldrig tas bort, bara avslutas. */
+function projectHasHistory(pid){
+  const p=projById(pid);
+  if(p && pStatus(p)==="avslutad") return true;
+  try{ if(projectTotals(pid,null).hours>0) return true; }catch(e){ return true; }
+  return (S.costs||[]).some(c=>c.projectId===pid);
+}
+/* Avslutade projekt, överst i arkivet. */
+function archivedProjectsPanel(){
+  const done=S.projects.filter(p=>pStatus(p)==="avslutad")
+    .sort((a,b)=>String(b.archivedAt||"").localeCompare(String(a.archivedAt||"")));
+  const rows=done.map(function(p){
+    let h=0; try{ h=projectTotals(p.id,null).hours; }catch(e){}
+    return '<tr><td><span class="code">'+esc(p.kod||"—")+'</span></td>'
+      + '<td><b>'+esc(p.name)+'</b>'+(p.adress?'<div class="note">'+esc(p.adress)+'</div>':'')+'</td>'
+      + '<td>'+esc(p.kund||"—")+'</td>'
+      + '<td class="num">'+esc(p.archivedAt?String(p.archivedAt).slice(0,10):"—")+'</td>'
+      + '<td>'+invSelect(p)+'</td>'
+      + '<td class="r">'+fmt(h)+'</td>'
+      + '<td class="r" style="white-space:nowrap"><button class="btn sm" data-act="openarkproj" data-p="'+esc(p.id)+'">Öppna</button> '
+      + '<button class="btn sm ghost" data-act="editproj" data-p="'+esc(p.id)+'">Ändra</button></td></tr>';
+  }).join("");
+  return '<div class="panel" style="margin-bottom:16px"><div class="hd"><div><h3>Avslutade projekt</h3>'
+    + '<span class="note">All tid, alla kostnader och all historik ligger kvar. Avslutade projekt kan inte tas bort. Sätt status Aktivt eller Vilande för att ta tillbaka ett projekt till listan.</span></div></div>'
+    + '<div class="tblwrap" style="border:0"><table class="tbl"><thead><tr><th>Kod</th><th>Projekt</th><th>Kund</th><th>Avslutat</th><th>Faktura</th><th class="r">Timmar totalt</th><th></th></tr></thead>'
+    + '<tbody>'+(rows||'<tr><td colspan="7" class="empty">Inga avslutade projekt ännu. När ett projekt får status Avslutat hamnar det här.</td></tr>')+'</tbody></table></div></div>';
+}
 function viewArkiv(){
   const f=S.arkFilter;
   const rows=S.archive.filter(function(a){ return f==="alla" || a.kind===f; });
@@ -2410,7 +2456,9 @@ function viewArkiv(){
       + '</td></tr>';
   }).join("");
   const kept=S.archive.filter(a=>a.keep).length;
-  return '<div class="bar">'
+  return archivedProjectsPanel()
+    + '<h3 style="margin:4px 0 10px">Sparade rapporter</h3>'
+    + '<div class="bar">'
     + '<div class="seg" role="group" aria-label="Filter">'
     + '<button data-act="arkf" data-v="alla" aria-pressed="'+(f==="alla")+'">Alla</button>'
     + '<button data-act="arkf" data-v="vecka" aria-pressed="'+(f==="vecka")+'">Tidrapporter</button>'
@@ -3554,7 +3602,7 @@ document.addEventListener("click", async function(ev){
     if(S.tab==="attest"){ await loadMonthsFor(weekMonths(wkey(S.cursor))); await loadWeekApprovals(); await loadReminderData(); }
     if(S.tab==="personal"){ await loadMonthsFor(weekMonths(wkey(S.cursor))); }
     if(S.tab==="projekt"){ await loadProjectData(); }
-    if(S.tab==="arkiv"){ await loadArchive(); await loadBackups(); }
+    if(S.tab==="arkiv"){ await loadArchive(); await loadBackups(); await loadProjectData(); }
     if(S.tab==="inkorg"){ await loadInbox(); }
     if(S.tab==="kor"){ await loadKor(); }
     if(S.tab==="kalkyl"){ S.off=null; S.offSel=null; await loadOffers(); }
@@ -4085,6 +4133,7 @@ document.addEventListener("click", async function(ev){
     closeModal(); render(); return;
   }
   if(act==="openproj"){ S.projSel=t.dataset.p; render(); return; }
+  if(act==="openarkproj"){ S.tab="projekt"; await loadProjectData(); S.projSel=t.dataset.p; render(); window.scrollTo(0,0); return; }
   if(act==="backproj"){ S.projSel=null; render(); return; }
 
   /* --- tid --- */
@@ -4221,25 +4270,38 @@ document.addEventListener("click", async function(ev){
     if(!name){ document.getElementById("p-name").focus(); toast("Projektet behöver ett namn."); return; }
     const id=t.dataset.p || slug(name);
     const rateRaw=(document.getElementById("p-rate").value||"").replace(/\s/g,"").replace(",",".");
-    const body={id:id, name:name,
+    const old=S.projects.find(p=>p.id===id)||{};
+    const status=document.getElementById("p-status").value;
+    const body=Object.assign({}, old, {id:id, name:name,
       kod:(document.getElementById("p-kod").value||"").trim(),
       kund:(document.getElementById("p-kund").value||"").trim(),
       adress:(document.getElementById("p-adress").value||"").trim(),
-      status:document.getElementById("p-status").value,
+      status:status,
+      invoice:(document.getElementById("p-invoice")||{}).value||old.invoice||"ej",
       rate: rateRaw?r2(parseFloat(rateRaw)||0):"",
-      notes:(document.getElementById("p-notes").value||"").trim()};
+      notes:(document.getElementById("p-notes").value||"").trim(),
+      updatedAt:new Date().toISOString()});
+    /* Spara när och av vem ett projekt avslutades. Öppnas det igen tas markeringen bort. */
+    if(status==="avslutad" && pStatus(old)!=="avslutad"){ body.archivedAt=new Date().toISOString(); body.archivedBy=S.me?S.me.name:""; }
+    if(status!=="avslutad"){ delete body.archivedAt; delete body.archivedBy; }
     await guard(async function(){
       await Store.set("projects/"+id, body);
       const i=S.projects.findIndex(p=>p.id===id);
       if(i>=0) S.projects[i]=body; else S.projects.push(body);
       S.projects.sort((a,b)=>String(a.kod||"").localeCompare(String(b.kod||""),"sv"));
-    }, "Projektet är sparat.");
+    }, status==="avslutad"&&pStatus(old)!=="avslutad"?"Projektet är avslutat och flyttat till arkivet.":"Projektet är sparat.");
+    if(status==="avslutad" && S.projSel===id && S.tab==="projekt") S.projSel=null;
     closeModal(); render(); return;
   }
-  if(act==="delproj"){ if(isAdmin()) confirmModal("Ta bort projekt?","Projektet försvinner ur listorna. Redan registrerade timmar ligger kvar men visas utan projektnamn.","delproj2",t.dataset.p,"p"); return; }
+  if(act==="delproj"){
+    if(!isAdmin()) return;
+    if(projectHasHistory(t.dataset.p)){ toast("Projektet har registrerad tid eller kostnader och kan inte tas bort. Sätt status Avslutat så flyttas det till arkivet."); return; }
+    confirmModal("Ta bort projekt?","Projektet har ingen registrerad tid och inga kostnader. Det tas bort helt.","delproj2",t.dataset.p,"p"); return;
+  }
   if(act==="delproj2"){
     if(!isAdmin()) return;
     const id=t.dataset.p;
+    if(projectHasHistory(id)){ closeModal(); toast("Projektet har historik och kan inte tas bort."); return; }
     await guard(async function(){ await Store.del("projects/"+id); S.projects=S.projects.filter(p=>p.id!==id); });
     if(S.projSel===id) S.projSel=null;
     closeModal(); render(); return;
@@ -4346,6 +4408,15 @@ document.addEventListener("click", async function(ev){
 });
 
 document.addEventListener("change", async function(ev){
+  if(ev.target.classList && ev.target.classList.contains("inv") && ev.target.dataset.p){
+    if(!isAdmin()) return;
+    const p=projById(ev.target.dataset.p); if(!p) return;
+    const v=ev.target.value; if(!INVSTATUS[v]) return;
+    const body=Object.assign({}, p, {invoice:v, invoiceAt:new Date().toISOString(), updatedAt:new Date().toISOString()});
+    const ok=await guard(function(){ return Store.set("projects/"+p.id, body); }, "Fakturastatus: "+INVSTATUS[v]+".");
+    if(ok){ const i=S.projects.findIndex(x=>x.id===p.id); if(i>=0) S.projects[i]=body; }
+    render(); return;
+  }
   if(ev.target.id==="f-type"){ syncProjField(); return; }
   if(ev.target.id==="f-proj"){ if(ev.target.value) S.lastProj=ev.target.value; return; }
   if(ev.target.id==="sel-emp"){ if(isAdmin()){ await selectEmployee(ev.target.value); render(); } return; }
