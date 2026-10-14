@@ -186,6 +186,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Mallbank för mätaravläsningen, en per bil. Alla inloggade förare lär upp
+    // den när de sparar en mätarställning. Bara superadmin kan ta bort den.
+    match /ocrbanks/{vehId} {
+      allow read, create, update: if signedIn();
+      allow delete: if isAdmin();
+    }
+
     // Körjournalen. En arbetare kommer bara åt sina egna resor, precis som
     // med tidrapporten. Appen frågar därför alltid efter empId == sitt eget
     // uid – en bredare fråga nekas här.

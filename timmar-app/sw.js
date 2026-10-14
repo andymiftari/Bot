@@ -3,7 +3,7 @@
    slår igenom direkt när du lagt upp den. Cachen används som reserv när
    telefonen är utan täckning. Tidrapporterna själva cachas av Firestore. */
 
-const VERSION = "ellingesmide-2026-10-14-d";
+const VERSION = "ellingesmide-2026-10-14-e";
 const SHELL = [
   "./",
   "index.html",
@@ -11,6 +11,7 @@ const SHELL = [
   "app.js",
   "qr.js",
   "offertpdf.js",
+  "ocr.js",
   "firebase-config.js",
   "manifest.webmanifest",
   "icons/icon-192.png",
