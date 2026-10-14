@@ -1,0 +1,60 @@
+# Cloudflare Pages reads this file to set response headers.
+#
+# The service worker and the HTML shell must never be served stale, or a new
+# version of the app will not reach phones that already have it installed.
+# Everything else is fingerprinted by the service worker's own cache, so it
+# can be cached hard at the edge.
+
+# Säkerhetshuvuden för hela sajten (version 2.2).
+#   - Content-Security-Policy: bara appens egna filer, Firebase/Google, typsnitten,
+#     supportformuläret och sifferavläsningen får laddas eller kontaktas. Skulle
+#     någon lyckas smyga in skript i en text i databasen körs det inte.
+#     Kopplar ni in en egen server (SYNC_URL i firebase-config.js) måste dess
+#     adress läggas till under connect-src nedan.
+#   - Sidan får inte bäddas in i en ram på någon annan sajt (klickkapning).
+#   - Webbläsaren tvingas alltid använda https.
+#   - Kameran får bara användas av appen själv; mikrofon, plats m.m. är avstängt.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; connect-src 'self' https://*.googleapis.com https://www.gstatic.com https://fonts.gstatic.com https://api.web3forms.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://www.google.com/recaptcha/; frame-src https://*.firebaseapp.com https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/index.html
+  Cache-Control: no-cache
+
+/
+  Cache-Control: no-cache
+
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+/firebase-config.js
+  Cache-Control: no-cache
+
+/app.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/qr.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/ocr.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/lib/*
+  Cache-Control: public, max-age=86400
+
+/styles.css
+  Cache-Control: public, max-age=0, must-revalidate
+
+/icons/*
+  Cache-Control: public, max-age=604800
+
+/*.svg
+  Cache-Control: public, max-age=604800
