@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.6";
+export const APP_VERSION = "2.6.1";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -1928,7 +1928,7 @@ async function readMeter(cv, scan){
   try{ if(O) r=O.readOdometer(copyCanvas(cv), ob?ob.bank:{}, ref); }catch(e){ console.warn("ocr.js", e); r=null; }
   scan.cells = (r && r.cells && r.cells.length) ? r.cells : null;
   scan.readText = "";
-  if(r && r.source==="bank" && r.ok && r.confidence>=0.35 && /^\d{4,7}$/.test(r.text)){
+  if(r && r.source==="bank" && r.ok && r.confidence>=0.2 && /^\d{4,7}$/.test(r.text)){
     scan.readText = r.text;
     return {value:r.text, hint:"Avläst: "+mfm.format(+r.text)+" km. Känd från bilens tidigare avläsningar. Stämmer det med mätaren?"};
   }
