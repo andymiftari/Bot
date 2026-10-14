@@ -1,0 +1,9 @@
+{
+  "name": "ellingesmide",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Pages Functions för Ellingesmide (AI-kalkyl).",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.134.0"
+  }
+}

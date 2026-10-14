@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.2";
+export const APP_VERSION = "2.3";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -2789,7 +2789,7 @@ const OFFER_STATUS = {utkast:"Utkast", skickad:"Skickad", accepterad:"Accepterad
 const OFFER_KINDS = [["arbete","Arbete","tim"],["material","Material","st"],["resa","Resor","mil"]];
 const FIRM_DEFAULTS = {name:"Ellinge Smidesservice AB", address:"", zip:"", city:"", phone:"", email:"", web:"",
   orgnr:"", vatnr:"", bankgiro:"", fskatt:true, payTerms:"30 dagar netto", validDays:30,
-  rate:0, markup:15, milPrice:0, terms:"", signature:""};
+  rate:0, markup:15, milPrice:0, terms:"", signature:"", workshop:"", aiHints:""};
 const firm = () => Object.assign({}, FIRM_DEFAULTS, S.firm||{});
 const addDays = (ds, n) => { const d=fromKey(ds); d.setDate(d.getDate()+(+n||0)); return dkey(d); };
 const numIn = v => { const n=parseHours(String(v==null?"":v)); return isNaN(n)?0:n; };
@@ -2906,6 +2906,83 @@ function offRowHtml(r, i){
   return h;
 }
 const kr2 = v => nf.format(r2(v))+" kr";
+/* AI-kalkylens underlag: bara för den som gör offerten, kommer aldrig med i PDF:en. */
+function aiPanel(o){
+  const a=o.ai; if(!a) return "";
+  const list=(h,arr,ol)=>arr&&arr.length?'<h4 style="margin:10px 0 4px">'+h+'</h4><'+(ol?'ol':'ul')+' style="margin:0;padding-left:20px">'
+    + arr.map(x=>'<li>'+esc(x)+'</li>').join("")+'</'+(ol?'ol':'ul')+'>':"";
+  const src=(a.sources||[]).length?'<h4 style="margin:10px 0 4px">Priskällor</h4><ul style="margin:0;padding-left:20px">'
+    + a.sources.map(s=>'<li>'+esc(s.desc)+': '+esc(s.source)+(s.estimated?' <b>(uppskattat)</b>':'')+'</li>').join("")+'</ul>':"";
+  return '<div class="panel" style="padding:14px;margin-bottom:14px"><div class="hd" style="padding:0;border:0">'
+    + '<div><span class="eyebrow">Bara för dig – kommer inte med i offerten</span><h3 style="margin-top:2px">AI-kalkylens underlag</h3></div>'
+    + '<span class="pill'+(a.confidence==="hög"?" solid":a.confidence==="låg"?" dash":"")+'" style="margin-left:auto">Säkerhet: '+esc(a.confidence||"–")+'</span></div>'
+    + '<p style="margin:8px 0 0">'+esc(a.summary||"")+'</p>'
+    + (a.sanity?'<p class="note" style="margin:6px 0 0"><b>Rimlighet:</b> '+esc(a.sanity)+'</p>':'')
+    + list("Antaganden",a.assumptions,true) + list("Frågor till kunden",a.questions,true) + list("Risker",a.risks,false) + src
+    + '<p class="note" style="margin-top:10px">Räknad '+esc(a.at||"")+'. Kontrollera priser märkta uppskattat innan offerten skickas.</p></div>';
+}
+/* Skickar förfrågan till /api/kalkyl och läser svaret rad för rad. */
+async function runAiKalkyl(o){
+  const f=firm();
+  const user=auth.currentUser;
+  if(!user) throw new Error("Du är inte inloggad.");
+  const token=await user.getIdToken();
+  const res=await fetch("api/kalkyl", {method:"POST",
+    headers:{"content-type":"application/json", authorization:"Bearer "+token},
+    body:JSON.stringify({mail:o.mail, today:dkey(new Date()), firm:{name:f.name, address:f.address, zip:f.zip, city:f.city,
+      workshop:f.workshop, rate:f.rate, markup:f.markup, milPrice:f.milPrice, validDays:f.validDays, payTerms:f.payTerms, aiHints:f.aiHints}})});
+  const ct=res.headers.get("content-type")||"";
+  if(!res.ok || !/ndjson/.test(ct)){
+    let msg="AI-kalkylen svarade inte ("+res.status+").";
+    try{ const j=await res.json(); if(j.error) msg=j.error; }catch(e){}
+    if(res.status===404) msg="AI-kalkylen finns inte på servern ännu.";
+    throw new Error(msg);
+  }
+  const reader=res.body.getReader(), dec=new TextDecoder();
+  let buf="", result=null;
+  for(;;){
+    const {value, done}=await reader.read();
+    if(value) buf+=dec.decode(value, {stream:true});
+    let i;
+    while((i=buf.indexOf("\n"))>=0){
+      const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
+      if(!line) continue;
+      let m; try{ m=JSON.parse(line); }catch(e){ continue; }
+      if(m.error) throw new Error(m.error);
+      if(m.result) result=m.result;
+      if(m.status){ S.aiStatus=m.status; const el=document.getElementById("k-ai-status"); if(el) el.textContent=m.status; }
+    }
+    if(done) break;
+  }
+  if(!result) throw new Error("AI-kalkylen avbröts innan den blev klar. Försök igen.");
+  return result;
+}
+/* För in AI:ns kalkyl i offerten. Kunduppgifter fylls bara i där fälten är tomma. */
+function applyAiKalkyl(o, r){
+  const cu=o.customer=o.customer||{};
+  ["name","contact","address","email","phone"].forEach(function(k){
+    const v=String(((r.customer||{})[k])||"").trim();
+    if(v && v.toLowerCase()!=="saknas" && !String(cu[k]||"").trim()) cu[k]=v;
+  });
+  if(r.title) o.title=r.title;
+  if(r.intro) o.intro=r.intro;
+  const rows=[];
+  (r.work||[]).forEach(w=>rows.push({kind:"arbete", desc:w.desc||"", qty:+w.hours||0, unit:"tim", price:+w.price||0}));
+  (r.material||[]).forEach(m=>rows.push({kind:"material", desc:m.desc||"", qty:+m.qty||0, unit:m.unit||"st", cost:+m.cost||0, markup:+m.markup||0}));
+  (r.travel||[]).forEach(t=>rows.push({kind:"resa", desc:t.desc||"", qty:+t.mil||0, unit:"mil", price:+t.price||0}));
+  if(rows.length) o.rows=rows;
+  o.ai={summary:r.summary||"", confidence:r.confidence||"", sanity:r.sanity||"",
+    assumptions:r.assumptions||[], questions:r.questions||[], risks:r.risks||[],
+    sources:(r.material||[]).map(m=>({desc:m.desc||"", source:m.source||"", estimated:!!m.estimated})),
+    at:new Date().toLocaleString("sv-SE",{dateStyle:"short",timeStyle:"short"})};
+  if(r.mail_text){
+    const c=offerCalc(o), f=firm();
+    const tot="Totalt "+kr2(c.sums.gross)+" inklusive moms ("+kr2(c.sums.net)+" exklusive moms). Offerten gäller till och med "+c.validTo+".";
+    const sign=[f.signature||(S.me?S.me.name:""), f.name, f.phone, f.email].filter(Boolean).join("\n");
+    o.mailText=String(r.mail_text).trim()+"\n\n"+tot+(sign && String(r.mail_text).indexOf(f.name||"\u0000")<0?"\n\n"+sign:"");
+    o.mailEdited=true;
+  }
+}
 function viewOffer(){
   const o=S.off, cu=o.customer||{};
   const fld=(id,label,v,type,extra)=>'<label class="fld"><span class="eyebrow">'+label+'</span>'
@@ -2938,7 +3015,10 @@ function viewOffer(){
     + '<div class="grid2" style="margin-bottom:14px">'
     + '<div class="panel" style="padding:14px"><h3 style="margin-bottom:8px">Kundens förfrågan</h3>'
     + fld("k-mail","Klistra in kundens mejl (underlag – syns inte i offerten)",o.mail,"area",9)
-    + '<button class="btn sm" style="margin-top:8px" data-act="offparse">Hämta kontaktuppgifter ur mejlet</button></div>'
+    + '<div class="bar" style="margin:8px 0 0">'
+    + '<button class="btn sm primary" data-act="offai"'+(S.aiBusy?' disabled':'')+'>'+(S.aiBusy?'Räknar …':'Räkna med AI')+'</button>'
+    + '<button class="btn sm" data-act="offparse">Hämta kontaktuppgifter ur mejlet</button></div>'
+    + '<p class="note" id="k-ai-status" style="margin-top:6px">'+esc(S.aiStatus||"")+'</p></div>'
     + '<div class="panel" style="padding:14px"><h3 style="margin-bottom:8px">Kund</h3><div class="stack">'
     + fld("k-cname","Namn eller företag",cu.name)
     + fld("k-contact","Kontaktperson",cu.contact)
@@ -2954,6 +3034,7 @@ function viewOffer(){
     + fld("k-valid","Giltig antal dagar",String(o.validDays||30),"text",' inputmode="numeric"')
     + fld("k-ref","Vår referens",o.ref)
     + '</div></div></div>'
+    + aiPanel(o)
     + sections
     + '<div class="kpis" style="margin-bottom:6px">'
     + '<div class="kpi"><span class="eyebrow">Summa exkl. moms</span><div class="v" id="k-net"></div></div>'
@@ -3055,6 +3136,10 @@ function firmModal(err){
     + fl("ff-pay","Betalningsvillkor",f.payTerms)
     + fl("ff-sign","Namn under mejlet",f.signature,' placeholder="'+esc(S.me?S.me.name:"")+'"')+'</div>'
     + '<label class="fld"><span class="eyebrow">Standardvillkor (kan ändras per offert)</span><textarea id="ff-terms" rows="3">'+esc(f.terms||"")+'</textarea></label>'
+    + '<h4 style="margin-top:6px">AI-kalkylen</h4>'
+    + fl("ff-workshop","Verkstadens adress (resor räknas härifrån – tomt = gatuadressen ovan)",f.workshop)
+    + '<label class="fld"><span class="eyebrow">Egna anvisningar till AI-kalkylen</span><textarea id="ff-aihints" rows="4" '
+    + 'placeholder="T.ex. Vi förzinkar hos … för ca … kr/kg. Räkna alltid två man vid montering. Vi köper stål från …">'+esc(f.aiHints||"")+'</textarea></label>'
     + (err?'<div class="err">'+esc(err)+'</div>':'')
     + '</div></div>'
     + '<div class="mf"><button class="btn" data-act="close">Avbryt</button><button class="btn primary" data-act="offfirmsave">Spara</button></div>');
@@ -3076,7 +3161,8 @@ async function handleKalkyl(act, t){
       vatnr:g("ff-vatnr").trim(), bankgiro:g("ff-bankgiro").trim(), fskatt:!!(document.getElementById("ff-fskatt")||{}).checked,
       rate:numIn(g("ff-rate")), markup:numIn(g("ff-markup")), milPrice:numIn(g("ff-mil")),
       validDays:Math.max(1,Math.round(numIn(g("ff-valid")))||30), payTerms:g("ff-pay").trim(),
-      signature:g("ff-sign").trim(), terms:g("ff-terms").trim(), updatedAt:new Date().toISOString()};
+      signature:g("ff-sign").trim(), terms:g("ff-terms").trim(),
+      workshop:g("ff-workshop").trim(), aiHints:g("ff-aihints").trim(), updatedAt:new Date().toISOString()};
     if(!body.name) return firmModal("Fyll i företagsnamnet."), true;
     const ok=await guard(function(){ return Store.set("settings/offert", body); }, "Firmauppgifterna är sparade.");
     if(ok){ S.firm=body; closeModal(); render(); if(S.off) offerLive(); }
@@ -3101,6 +3187,26 @@ async function handleKalkyl(act, t){
     if(!String(cu.name||"").trim() && got.contact){ cu.name=got.contact; n++; }
     render(); offerLive();
     toast(n?"Hämtade "+n+" uppgifter ur mejlet. Kontrollera dem.":"Hittade inga nya kontaktuppgifter i mejlet.");
+    return true;
+  }
+  if(act==="offai"){
+    if(S.aiBusy) return true;
+    if(!String(o.mail||"").trim()){ toast("Klistra in kundens förfrågan först."); return true; }
+    const hasRows=(o.rows||[]).some(r=>String(r.desc||"").trim() || +r.qty);
+    if(hasRows && !confirmTwice("offai")){ toast("AI:n ersätter raderna i offerten. Tryck på Räkna med AI en gång till för att fortsätta."); return true; }
+    S.aiBusy=true; S.aiStatus="Startar AI-kalkylen … det tar oftast en till tre minuter."; render(); offerLive();
+    const off=o;
+    try{
+      const r=await runAiKalkyl(off);
+      applyAiKalkyl(off, r);
+      S.aiStatus="Klar. Gå igenom raderna och antagandena, och spara offerten.";
+      toast("AI-kalkylen är klar.");
+    }catch(e){
+      console.error(e); S.aiStatus=e.message||"AI-kalkylen misslyckades."; toast(S.aiStatus);
+    }finally{
+      S.aiBusy=false;
+      if(S.off===off){ render(); offerLive(); }
+    }
     return true;
   }
   if(act==="offmailreset"){ o.mailEdited=false; o.mailText=""; render(); offerLive(); return true; }

@@ -1,5 +1,6 @@
 # Publicerar Ellingesmide automatiskt vid varje push:
-#   1. Appen i timmar-app/ laddas upp till Cloudflare Pages (projektet "ellingesmide").
+#   1. Appen i timmar-app/ och serverfunktionerna i functions/ laddas upp till
+#      Cloudflare Pages (projektet "ellingesmide").
 #   2. Därefter publiceras firestore.rules till Firebase.
 # Reglerna går alltid efter appen, så att en ny appversion finns ute innan
 # reglerna som hör till den börjar gälla.
@@ -19,6 +20,8 @@ on:
       - claude/odds-lappar-sportsbetting-dyfm54
     paths:
       - "timmar-app/**"
+      - "functions/**"
+      - "package.json"
       - "firestore.rules"
       - "firebase.json"
       - ".github/workflows/deploy.yml"
@@ -36,6 +39,14 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Serverfunktionen för AI-kalkylen (functions/) behöver Anthropics SDK.
+      - name: Installera beroenden
+        run: npm ci --no-audit --no-fund
 
       - name: Ladda upp timmar-app
         uses: cloudflare/wrangler-action@v3
