@@ -1,0 +1,16 @@
+ELLINGESMIDE 2.2 – HELA ARBETET
+
+1-LADDA-UPP-TILL-CLOUDFLARE
+   Hela appen, färdig att ladda upp. Din egen firebase-config.js ligger redan i.
+   Cloudflare > Workers & Pages > ellingesmide > Create deployment >
+   klicka "folder" > välj mappen 1-LADDA-UPP-TILL-CLOUDFLARE > Save and deploy.
+
+   Öppna sedan appen och logga in som admin en gång.
+
+2-firestore-regler-2.2.rules
+   De nya säkerhetsreglerna. Publiceras FÖRST EFTER att 2.2 är uppladdad:
+   Firebase-konsolen > Firestore Database > Rules > markera allt >
+   klistra in hela filen > Publish.
+
+Dela inte den här zip-filen med andra – den innehåller appens
+Firebase-inställningar.

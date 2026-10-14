@@ -1,0 +1,249 @@
+rules_version = '2';
+
+// Säkerhetsregler för Ellingesmide (version 2.2).
+// Klistra in hela den här filen i Firebase-konsolen:
+//   Firestore Database  ->  Rules  ->  ersätt allt  ->  Publish
+//
+// Kort sammanfattning:
+//   - Ingen utan inloggning kommer åt något (utom att se att appen är uppsatt,
+//     slå upp ett kontonamn och skicka en supportförfrågan).
+//   - En arbetare läser och skriver bara sitt eget: sin profil, sina timmar,
+//     sina veckor, sina resor. Andras timmar, löner, kostnader, arkiv och
+//     säkerhetskopior syns inte.
+//   - En inskickad eller attesterad vecka är låst. Arbetaren kan inte ändra
+//     timmarna i den och kan inte ta bort låset – det gör bara superadmin.
+//   - Superadmin och support (role "admin"/"support") får skriva allt.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profile() {
+      return get(/databases/$(database)/documents/employees/$(request.auth.uid)).data;
+    }
+
+    function isFirstOwner() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/meta/app)
+        && get(/databases/$(database)/documents/meta/app).data.ownerUid == request.auth.uid;
+    }
+
+    // Superadmin och support har samma befogenheter i tidrapporteringen.
+    // Den som satte upp firman räknas alltid som superadmin, så att en felaktig
+    // roll i databasen aldrig kan låsa ute alla från att rätta till den.
+    function isAdmin() {
+      return isFirstOwner()
+        || (signedIn()
+            && exists(/databases/$(database)/documents/employees/$(request.auth.uid))
+            && (profile().role == 'admin' || profile().role == 'support'));
+    }
+
+    // Bara supportrollen får ändra appens utseende och texter.
+    function isSupport() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/employees/$(request.auth.uid))
+        && profile().role == 'support';
+    }
+
+    // Tidrapporter och veckor har id "<uid>__<månad eller vecka>".
+    function ownsId(docId) {
+      return signedIn() && docId.split('__')[0] == request.auth.uid;
+    }
+
+    // Appen kollar det här dokumentet innan inloggning för att veta
+    // om firman redan är uppsatt. Det innehåller inga personuppgifter.
+    match /meta/{docId} {
+      allow read: if true;
+      allow create: if signedIn() && !exists(/databases/$(database)/documents/meta/app);
+      allow update, delete: if isAdmin();
+    }
+
+    // Profiler. Dokument-id är personens inloggnings-id (uid).
+    match /employees/{uid} {
+      // Var och en läser sin egen profil. Hela personallistan bara superadmin.
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow list: if isAdmin();
+      // Ett nytt konto lägger upp sin egen profil som arbetare.
+      // Superadmin höjer sedan rollen vid behov. Första kontot får bli admin.
+      allow create: if signedIn()
+                    && request.auth.uid == uid
+                    && (isFirstOwner() || request.resource.data.role == 'arbetare');
+      // Den som kopplar en riktig e-postadress till sitt eget konto får skriva
+      // just den – inget annat i profilen, och aldrig rollen.
+      allow update: if isAdmin()
+                    || (signedIn() && request.auth.uid == uid
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['authEmail', 'email']));
+      allow delete: if isAdmin();
+    }
+
+    // Appens namn, texter och färger (settings/app), menyerna för tidtyper och
+    // kostnadsslag (settings/lists) och firmans offertuppgifter (settings/offert).
+    match /settings/{docId} {
+      allow read: if signedIn();
+      allow write: if (docId == 'lists' || docId == 'offert') ? isAdmin() : isSupport();
+    }
+
+    // Kontonamn -> inloggningsadress. Måste kunna slås upp innan inloggning,
+    // men bara en i taget: hela listan går inte att bläddra igenom.
+    match /usernames/{name} {
+      // Den som själv bytt till en riktig e-postadress pekar om sitt eget
+      // kontonamn – och bara till den adress hen nu är inloggad med.
+      function selfLookup() {
+        return signedIn()
+          && exists(/databases/$(database)/documents/employees/$(request.auth.uid))
+          && profile().username.lower() == name
+          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.keys().hasOnly(['email', 'name']);
+      }
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() || selfLookup();
+      allow delete: if isAdmin();
+    }
+
+    // Projekt: alla inloggade ser dem (behövs för att välja projekt), bara
+    // superadmin ändrar.
+    match /projects/{projectId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // Tidrapporter: en post per person och månad, id "<uid>__<ÅÅÅÅ-MM>".
+    // "locked" är en lista över låsta dagar ({"2026-09-21": true, ...}).
+    match /months/{docId} {
+      function oldLocked() { return resource.data.get('locked', {}); }
+      function newLocked() { return request.resource.data.get('locked', {}); }
+      // Inga lås får försvinna.
+      function locksKept() { return newLocked().keys().hasAll(oldLocked().keys()); }
+      // Ingen låst dag får ändras.
+      function touchesLocked() {
+        return request.resource.data.get('days', {})
+                 .diff(resource.data.get('days', {}))
+                 .affectedKeys().hasAny(oldLocked().keys());
+      }
+
+      allow get: if isAdmin() || ownsId(docId);
+      // Appen frågar alltid efter empId == sitt eget uid – en bredare fråga nekas.
+      allow list: if isAdmin() || (signedIn() && resource.data.empId == request.auth.uid);
+      allow create: if isAdmin()
+                    || (ownsId(docId) && request.resource.data.empId == request.auth.uid);
+      allow update: if isAdmin()
+                    || (ownsId(docId)
+                        && resource.data.empId == request.auth.uid
+                        && request.resource.data.empId == request.auth.uid
+                        && locksKept()
+                        && !touchesLocked());
+      allow delete: if isAdmin();
+    }
+
+    // Veckoattest, id "<uid>__<ÅÅÅÅ-Vvv>". Den anställde får bara skicka in sin
+    // egen vecka, och bara om den är ett utkast eller returnerad. Attest, retur
+    // och upplåsning kräver superadmin.
+    match /approvals/{docId} {
+      allow get: if isAdmin() || ownsId(docId);
+      allow list: if isAdmin() || (signedIn() && resource.data.empId == request.auth.uid);
+      allow create: if isAdmin()
+                    || (ownsId(docId)
+                        && request.resource.data.empId == request.auth.uid
+                        && request.resource.data.status == 'inskickad');
+      allow update: if isAdmin()
+                    || (ownsId(docId)
+                        && resource.data.empId == request.auth.uid
+                        && request.resource.data.empId == request.auth.uid
+                        && request.resource.data.status == 'inskickad'
+                        && resource.data.status in ['utkast', 'retur']);
+      allow delete: if isAdmin();
+    }
+
+    // Kostnader på projekt (material, mil, utlägg) – inköpspriser, bara superadmin.
+    match /costs/{costId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Arkiv över uttagna rapporter och själva filerna. Bara superadmin.
+    match /archive/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /archivedata/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Offerter från kalkylfliken. Bara superadmin.
+    match /offers/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Firmans bilar. Alla inloggade ser dem – de behövs för att kunna
+    // rapportera körning – men bara superadmin lägger upp och ändrar.
+    match /vehicles/{vehId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // Körjournalen. En arbetare kommer bara åt sina egna resor, precis som
+    // med tidrapporten. Appen frågar därför alltid efter empId == sitt eget
+    // uid – en bredare fråga nekas här.
+    match /trips/{tripId} {
+      allow read: if isAdmin()
+                  || (signedIn() && resource.data.empId == request.auth.uid);
+      allow create: if isAdmin()
+                    || (signedIn() && request.resource.data.empId == request.auth.uid);
+      allow update: if isAdmin()
+                    || (signedIn() && resource.data.empId == request.auth.uid
+                        && request.resource.data.empId == request.auth.uid);
+      allow delete: if isAdmin()
+                    || (signedIn() && resource.data.empId == request.auth.uid);
+    }
+
+    // Mätarfoton till resorna, id "<resans id>__start" eller "__end".
+    // Ligger för sig så att resorna går snabbt att hämta.
+    match /tripphotos/{pid} {
+      function tripPath() {
+        return /databases/$(database)/documents/trips/$(request.resource.data.tripId);
+      }
+      allow get: if isAdmin()
+                 || (signedIn() && (resource == null || resource.data.empId == request.auth.uid));
+      allow list: if isAdmin();
+      allow create, update: if isAdmin()
+                    || (signedIn()
+                        && request.resource.data.empId == request.auth.uid
+                        && request.resource.data.which in ['start', 'end']
+                        && pid == request.resource.data.tripId + '__' + request.resource.data.which
+                        && request.resource.data.data is string
+                        && request.resource.data.data.size() < 400000
+                        && exists(tripPath())
+                        && get(tripPath()).data.empId == request.auth.uid);
+      allow delete: if isAdmin()
+                    || (signedIn() && resource.data.empId == request.auth.uid);
+    }
+
+    // Dagliga säkerhetskopior av hela databasen. Bara superadmin och support
+    // rör dem – de innehåller allt, även personalens uppgifter.
+    match /backups/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Loggade påminnelser, så att ingen blir tjatad på två gånger samma dag.
+    match /reminders/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Supportförfrågningar. Superadmin och support läser.
+    match /support/{docId} {
+      allow read: if isAdmin();
+      // Även den som inte kommer in ska kunna be om hjälp, men bara skicka
+      // en rimlig supportförfrågan – inget annat, och inget långt.
+      allow create: if request.resource.data.message is string
+                    && request.resource.data.message.size() > 0
+                    && request.resource.data.message.size() < 2000
+                    && request.resource.data.keys().hasOnly(
+                         ['id','done','name','contact','message','page','role',
+                          'account','project','app','at','agent','version']);
+      allow update, delete: if isAdmin();
+    }
+  }
+}
