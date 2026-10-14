@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.4";
+export const APP_VERSION = "2.5";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -34,7 +34,7 @@ const DEFAULTS = {
   supportLabel:"Behöver du hjälp? Skicka en supportförfrågan",
   tabs:{tid:"Tidrapport", mitt:"Min tidrapport", kor:"Körjournal", projekt:"Projekt", attest:"Veckoattest",
         arkiv:"Arkiv", personal:"Personal & konton", listor:"Listor", kalkyl:"Kalkyl",
-        inkorg:"Inkorg", utseende:"Utseende & texter"},
+        inkorg:"Inkorg", utseende:"Utseende & texter", statistik:"Statistik"},
   roles:{arbetare:"Arbetare", admin:"Superadmin", support:"Support"},
   theme:{mode:"auto", ink:"", ground:""},
   vat:25
@@ -698,7 +698,7 @@ function topbar(){
   const me=S.me;
   /* Körjournalen ligger direkt efter tidrapporten och finns för alla roller. */
   const tabs = isAdmin()
-    ? [["tid",cfg("tabs.tid")],["kor",cfg("tabs.kor")],["projekt",cfg("tabs.projekt")],["kalkyl",cfg("tabs.kalkyl")],["attest",cfg("tabs.attest")],
+    ? [["tid",cfg("tabs.tid")],["kor",cfg("tabs.kor")],["projekt",cfg("tabs.projekt")],["statistik",cfg("tabs.statistik")],["kalkyl",cfg("tabs.kalkyl")],["attest",cfg("tabs.attest")],
        ["arkiv",cfg("tabs.arkiv")],["personal",cfg("tabs.personal")],["listor",cfg("tabs.listor")]]
       .concat(isSupport()?[["inkorg",cfg("tabs.inkorg")],["utseende",cfg("tabs.utseende")]]:[])
     : [["tid",cfg("tabs.mitt")],["kor",cfg("tabs.kor")],["projekt",cfg("tabs.projekt")]];
@@ -1013,6 +1013,54 @@ function costTotals(rows){
   rows.forEach(c=>{ const a=+c.amount||0; sum+=a; byKind[c.kind]=(byKind[c.kind]||0)+a; });
   return {sum:r2(sum), byKind:byKind};
 }
+/* ---- kalkyl mot utfall ----
+   Varje projekt kan ha en kalkyl: offererat pris och, om man vill, uppdelning
+   på timmar, arbete, material och körning (hämtas ur en offert eller skrivs in).
+   Utfallet räknas på all tid och alla kostnader i projektet, samma som
+   "Att fakturera totalt". */
+const QUOTE_PARTS = [["labour","Arbete"],["material","Material"],["travel","Körning"],["other","Övrigt"]];
+function projQuote(p){
+  const q=(p&&p.quote)||{};
+  const parts={labour:+q.labour||0, material:+q.material||0, travel:+q.travel||0, other:+q.other||0};
+  const partSum=r2(parts.labour+parts.material+parts.travel+parts.other);
+  return {total:+q.total||partSum, hours:+q.hours||0, parts:parts, partSum:partSum, offerId:q.offerId||"", offerNr:q.offerNr||""};
+}
+function projActual(p){
+  const all=projectTotals(p.id,null), rate=+p.rate||0;
+  const c=costTotals(costsFor(p.id,null)).byKind;
+  let material=0, travel=0, other=0;
+  Object.keys(c).forEach(function(k){
+    if(k==="material") material+=c[k]; else if(k==="mil") travel+=c[k]; else other+=c[k];
+  });
+  const labour=r2(all.bill*rate);
+  return {hours:r2(all.hours), billHours:r2(all.bill), parts:{labour:labour, material:r2(material), travel:r2(travel), other:r2(other)},
+    total:r2(labour+material+travel+other)};
+}
+/* Grön upp till 90 %, gul upp till 100 %, röd över. */
+const budgetClass = pct => pct>100 ? "over" : pct>90 ? "near" : "ok";
+function budgetBar(actual, total, compact){
+  if(!(total>0)) return compact?'<span class="note">Ingen kalkyl</span>':'';
+  const pct=actual/total*100, cls=budgetClass(pct);
+  return '<div class="budget '+cls+(compact?' compact':'')+'" role="img" aria-label="'+esc(Math.round(pct)+" procent av offererat pris")+'">'
+    + '<div class="track"><i style="width:'+Math.min(100,Math.max(0,pct)).toFixed(1)+'%"></i></div>'
+    + '<div class="lbl"><b>'+kr(actual)+'</b> / '+kr(total)+' <span>'+Math.round(pct)+' %</span></div></div>';
+}
+/* Tabell med kalkyl, utfall och skillnad per del. */
+function quoteCompareTable(p){
+  const q=projQuote(p), a=projActual(p);
+  const cell=(act, plan, fmtf)=>{
+    if(!(plan>0)) return '<td class="r">'+fmtf(act)+'</td><td class="r note">—</td><td class="r note">—</td>';
+    const pct=act/plan*100;
+    return '<td class="r">'+fmtf(act)+'</td><td class="r">'+fmtf(plan)+'</td>'
+      + '<td class="r"><span class="dev '+budgetClass(pct)+'">'+Math.round(pct)+' %</span></td>';
+  };
+  const krf=v=>kr(v), hf=v=>fmt(v)+' h';
+  return '<div class="tblwrap" style="border:0"><table class="tbl"><thead><tr><th>Del</th><th class="r">Utfall</th><th class="r">Kalkyl</th><th class="r">Av kalkyl</th></tr></thead><tbody>'
+    + '<tr><td>Arbetstimmar</td>'+cell(a.hours, q.hours, hf)+'</tr>'
+    + QUOTE_PARTS.map(x=>'<tr><td>'+x[1]+'</td>'+cell(a.parts[x[0]], q.parts[x[0]], krf)+'</tr>').join("")
+    + '<tr class="sumrow"><th>Totalt exkl. moms</th>'+cell(a.total, q.total, krf).replace(/<td/g,'<th').replace(/<\/td>/g,'</th>')+'</tr>'
+    + '</tbody></table></div>';
+}
 function projectTotals(pid, dates, onlyEmp){
   let hours=0, bill=0, ot=0;
   const byEmp={}, byMonth={}, rows=[];
@@ -1055,6 +1103,46 @@ function periodControl(){
   }
   return html;
 }
+/* ============================ statistik ============================ */
+/* Kalkyl mot utfall för alla projekt på en gång. */
+function viewStatistik(){
+  const scope=S.statScope||"oppna";
+  const list=S.projects.filter(p=>scope==="alla" || (scope==="avslutade" ? pStatus(p)==="avslutad" : pStatus(p)!=="avslutad"));
+  let sumQ=0, sumA=0, over=0, near=0, withQ=0;
+  const rows=list.map(function(p){
+    const q=projQuote(p), a=projActual(p);
+    if(q.total>0){ withQ++; sumQ+=q.total; sumA+=a.total; const pc=a.total/q.total*100; if(pc>100) over++; else if(pc>90) near++; }
+    const dev=(act,plan,f)=>plan>0
+      ? '<td class="r">'+f(act)+'<div class="note">av '+f(plan)+' · <span class="dev '+budgetClass(act/plan*100)+'">'+Math.round(act/plan*100)+' %</span></div></td>'
+      : '<td class="r">'+f(act)+'<div class="note">ingen kalkyl</div></td>';
+    return '<tr class="p-'+pStatus(p)+'"><td><span class="code">'+esc(p.kod||"—")+'</span></td>'
+      + '<td><b>'+esc(p.name)+'</b><div class="note">'+esc(p.kund||"")+'</div></td>'
+      + '<td>'+pStatusPill(p)+'</td>'
+      + '<td style="min-width:180px">'+budgetBar(a.total, q.total, true)+'</td>'
+      + dev(a.hours, q.hours, v=>fmt(v)+" h")
+      + dev(a.parts.labour, q.parts.labour, kr)
+      + dev(a.parts.material, q.parts.material, kr)
+      + dev(a.parts.travel, q.parts.travel, kr)
+      + dev(a.parts.other, q.parts.other, kr)
+      + '<td class="r"><button class="btn sm" data-act="openarkproj" data-p="'+esc(p.id)+'">Öppna</button></td></tr>';
+  }).join("");
+  sumQ=r2(sumQ); sumA=r2(sumA);
+  return '<div class="bar"><span class="note">Kalkyl mot utfall på alla projekt. Utfallet räknas på all registrerad tid (fakturerbara timmar × timpris) och alla bokförda kostnader. '
+    + 'Körning är bokförd milersättning.</span>'
+    + '<label class="fld" style="margin-left:auto"><select id="st-scope">'
+    + [["oppna","Aktiva och vilande"],["avslutade","Avslutade"],["alla","Alla projekt"]].map(x=>'<option value="'+x[0]+'"'+(scope===x[0]?" selected":"")+'>'+x[1]+'</option>').join("")
+    + '</select></label></div>'
+    + '<div class="kpis" style="margin-bottom:14px">'
+    + '<div class="kpi"><span class="eyebrow">Offererat (projekt med kalkyl)</span><div class="v">'+kr(sumQ)+'</div></div>'
+    + '<div class="kpi"><span class="eyebrow">Uppnått på dem</span><div class="v">'+kr(sumA)+'</div></div>'
+    + '<div class="kpi"><span class="eyebrow">Över 90 %</span><div class="v"><span class="dev near">'+near+'</span></div></div>'
+    + '<div class="kpi"><span class="eyebrow">Över kalkyl</span><div class="v"><span class="dev over">'+over+'</span></div></div>'
+    + '</div>'
+    + '<div class="tblwrap"><table class="tbl"><thead><tr><th>Kod</th><th>Projekt</th><th>Status</th><th>Uppnått / offererat</th>'
+    + '<th class="r">Timmar</th><th class="r">Arbete</th><th class="r">Material</th><th class="r">Körning</th><th class="r">Övrigt</th><th></th></tr></thead>'
+    + '<tbody>'+(rows||'<tr><td colspan="10" class="empty">Inga projekt i urvalet.</td></tr>')+'</tbody></table></div>'
+    + (withQ<list.length?'<p class="note" style="margin-top:10px">'+(list.length-withQ)+' projekt saknar kalkyl. Lägg in offererat pris under Projekt → Ändra projekt.</p>':'');
+}
 function viewProjekt(){
   if(S.projSel) return projectDetail(S.projSel);
   const dates=periodDates(), admin=isAdmin();
@@ -1071,7 +1159,7 @@ function viewProjekt(){
     const amtP=r2(tp.bill*rate+cP), amtA=r2(all.bill*rate+cA);
     sumPeriod+=amtP; sumAll+=amtA;
     const cols = admin
-      ? '<td class="r">'+kr(amtP)+'</td><td class="r"><b>'+kr(amtA)+'</b></td>'
+      ? '<td class="r">'+kr(amtP)+'</td><td class="r"><b>'+kr(amtA)+'</b>'+(projQuote(p).total>0?budgetBar(amtA, projQuote(p).total, true):'')+'</td>'
       : '<td class="r">'+fmt(tp.hours)+'</td><td class="r">'+fmt(all.hours)+'</td>';
     return '<tr class="p-'+pStatus(p)+'"><td><span class="code">'+esc(p.kod||"—")+'</span></td>'
       + '<td><b>'+esc(p.name)+'</b>'+(p.adress?'<div class="note">'+esc(p.adress)+'</div>':'')+'</td>'
@@ -1154,7 +1242,14 @@ function projectDetail(pid){
     + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">'+pStatusPill(p)
     + (admin?invSelect(p):'')
     + (pStatus(p)==="avslutad"?'<span class="note">Avslutat'+(p.archivedAt?' '+esc(String(p.archivedAt).slice(0,10)):'')+' · ligger i arkivet</span>':'')+'</div>'
-    + (p.notes?'<p style="margin-top:8px">'+esc(p.notes)+'</p>':'')+'</div>'
+    + (p.notes?'<p style="margin-top:8px">'+esc(p.notes)+'</p>':'')
+    + (admin?(projQuote(p).total>0
+        ? '<div style="margin-top:14px"><span class="eyebrow">Uppnått av offererat pris'+(projQuote(p).offerNr?' · offert '+esc(projQuote(p).offerNr):'')+'</span>'
+          + budgetBar(projActual(p).total, projQuote(p).total, false)+'</div>'
+        : '<p class="note" style="margin-top:10px">Inget offererat pris inlagt. Tryck på <b>Ändra projekt</b> för att lägga in kalkylen.</p>'):'')
+    + '</div>'
+    + (admin&&projQuote(p).total>0?'<div class="panel" style="margin-bottom:14px"><div class="hd"><h3>Kalkyl mot utfall</h3>'
+      + '<span class="note">Hela projektet, oavsett vald period</span></div>'+quoteCompareTable(p)+'</div>':'')
     + '<div class="kpis" style="margin-bottom:14px">'
     + '<div class="kpi"><span class="eyebrow">'+(admin?'Timmar i period':'Mina timmar i period')+'</span><div class="v">'+fmt(src.hours)+'<s>h</s></div></div>'
     + '<div class="kpi"><span class="eyebrow">Fakturerbart i period</span><div class="v">'+fmt(src.bill)+'<s>h</s></div></div>'
@@ -1374,7 +1469,7 @@ function viewUtseende(){
     + '</div></div>'
     + '<div class="panel" style="padding:16px"><h3>Namn på flikarna</h3><div class="stack" style="margin-top:12px">'
     + [["tid","Tidrapport (superadmin)"],["mitt","Tidrapport (arbetare)"],["projekt","Projekt"],
-       ["kalkyl","Kalkyl"],["attest","Veckoattest"],["arkiv","Arkiv"],["personal","Personal"],["inkorg","Inkorg"],["utseende","Utseende"]]
+       ["statistik","Statistik"],["kalkyl","Kalkyl"],["attest","Veckoattest"],["arkiv","Arkiv"],["personal","Personal"],["inkorg","Inkorg"],["utseende","Utseende"]]
        .map(function(t){ return '<label class="fld"><span class="eyebrow">'+t[1]+'</span>'
          + '<input id="b-tab-'+t[0]+'" type="text" value="'+esc(cfg("tabs."+t[0]))+'"></label>'; }).join("")
     + '</div></div>'
@@ -1477,6 +1572,8 @@ function empModal(empId, err){
 }
 function projModal(pid){
   const p = pid ? projById(pid) : {name:"",kod:"",kund:"",adress:"",status:"aktiv",rate:"",notes:"",invoice:"ej"};
+  const q=(p.quote)||{}, qv=k=>esc(+q[k]?numOut(q[k]):"");
+  const offers=(S.offers||[]).filter(o=>o.sums&&o.sums.net);
   openModal('<div class="mh"><h3>'+(pid?"Redigera projekt":"Nytt projekt")+'</h3><button class="btn sm ghost" data-act="close">Stäng</button></div>'
     + '<div class="mb"><div class="stack">'
     + '<label class="fld"><span class="eyebrow">Projektnamn</span><input id="p-name" type="text" value="'+esc(p.name)+'" placeholder="Räcken Kv. Smedjan"></label>'
@@ -1489,6 +1586,19 @@ function projModal(pid){
     + '<label class="fld"><span class="eyebrow">Faktura</span><select id="p-invoice">'
     + Object.keys(INVSTATUS).map(k=>'<option value="'+k+'"'+((p.invoice||"ej")===k?" selected":"")+'>'+INVSTATUS[k]+'</option>').join("")+'</select></label>'
     + '<p class="note">Avslutade projekt flyttas till Arkiv. All tid och alla kostnader ligger kvar och kan alltid tas fram igen.</p>'
+    + '<h4 style="margin-top:6px">Kalkyl och offererat pris</h4>'
+    + (offers.length?'<label class="fld"><span class="eyebrow">Hämta från offert</span><select id="p-offer"><option value="">Välj offert …</option>'
+      + offers.map(o=>'<option value="'+esc(o.id)+'"'+(q.offerId===o.id?" selected":"")+'>'+esc((o.nr||"")+" · "+((o.customer||{}).name||"")+(o.title?" – "+o.title:"")+" · "+kr(o.sums.net))+'</option>').join("")
+      + '</select></label>':'')
+    + '<label class="fld"><span class="eyebrow">Offererat pris för hela projektet (kr exkl. moms)</span><input id="p-qtotal" type="text" inputmode="decimal" value="'+qv("total")+'" placeholder="T.ex. 150 000"></label>'
+    + '<div class="form even">'
+    + '<label class="fld"><span class="eyebrow">Timmar i kalkylen</span><input id="p-qhours" type="text" inputmode="decimal" value="'+qv("hours")+'"></label>'
+    + '<label class="fld"><span class="eyebrow">Arbete (kr)</span><input id="p-qlabour" type="text" inputmode="decimal" value="'+qv("labour")+'"></label></div>'
+    + '<div class="form even">'
+    + '<label class="fld"><span class="eyebrow">Material (kr)</span><input id="p-qmat" type="text" inputmode="decimal" value="'+qv("material")+'"></label>'
+    + '<label class="fld"><span class="eyebrow">Körning (kr)</span><input id="p-qtravel" type="text" inputmode="decimal" value="'+qv("travel")+'"></label></div>'
+    + '<label class="fld"><span class="eyebrow">Övrigt (kr)</span><input id="p-qother" type="text" inputmode="decimal" value="'+qv("other")+'"></label>'
+    + '<p class="note">Uppdelningen behövs för Statistik. Lämnar du offererat pris tomt räknas det som summan av delarna.</p>'
     + '<label class="fld"><span class="eyebrow">Anteckning</span><textarea id="p-notes" rows="3">'+esc(p.notes||"")+'</textarea></label>'
     + '</div></div>'
     + '<div class="mf">'+(pid&&pStatus(p)!=="avslutad"?'<button class="btn ghost" data-act="delproj" data-p="'+pid+'">Ta bort</button>':'')
@@ -3327,6 +3437,7 @@ function render(){
   else if(S.tab==="inkorg" && isSupport()) body=viewInkorg();
   else if(S.tab==="utseende" && isSupport()) body=viewUtseende();
   else if(S.tab==="kalkyl" && isAdmin()) body=viewKalkyl();
+  else if(S.tab==="statistik" && isAdmin()) body=viewStatistik();
   else if(S.tab==="projekt") body=viewProjekt();
   else if(S.tab==="kor") body=viewKor();
   else body=viewTid();
@@ -3601,7 +3712,7 @@ document.addEventListener("click", async function(ev){
     S.tab=t.dataset.v; S.projSel=null;
     if(S.tab==="attest"){ await loadMonthsFor(weekMonths(wkey(S.cursor))); await loadWeekApprovals(); await loadReminderData(); }
     if(S.tab==="personal"){ await loadMonthsFor(weekMonths(wkey(S.cursor))); }
-    if(S.tab==="projekt"){ await loadProjectData(); }
+    if(S.tab==="projekt"||S.tab==="statistik"){ await loadProjectData(); }
     if(S.tab==="arkiv"){ await loadArchive(); await loadBackups(); await loadProjectData(); }
     if(S.tab==="inkorg"){ await loadInbox(); }
     if(S.tab==="kor"){ await loadKor(); }
@@ -3880,7 +3991,7 @@ document.addEventListener("click", async function(ev){
       theme:{mode:val("b-mode")||"auto", ink:/^#[0-9a-fA-F]{3,8}$/.test(ink)?ink:"", ground:cfg("theme.ground","")},
       updatedAt:new Date().toISOString(), updatedBy:S.me.name
     };
-    ["tid","mitt","projekt","attest","arkiv","personal","inkorg","utseende"].forEach(function(k){
+    ["tid","mitt","projekt","statistik","kalkyl","attest","arkiv","personal","inkorg","utseende"].forEach(function(k){
       body.tabs[k]=val("b-tab-"+k)||DEFAULTS.tabs[k];
     });
     ["arbetare","admin","support"].forEach(function(r){ body.roles[r]=val("b-role-"+r)||DEFAULTS.roles[r]; });
@@ -4262,8 +4373,8 @@ document.addEventListener("click", async function(ev){
   }
 
   /* --- projekt --- */
-  if(act==="newproj"){ if(isAdmin()) projModal(null); return; }
-  if(act==="editproj"){ if(isAdmin()) projModal(t.dataset.p); return; }
+  if(act==="newproj"){ if(isAdmin()){ try{ if(!S.offers) await loadOffers(); }catch(e){} projModal(null); } return; }
+  if(act==="editproj"){ if(isAdmin()){ try{ if(!S.offers) await loadOffers(); }catch(e){} projModal(t.dataset.p); } return; }
   if(act==="saveproj"){
     if(!isAdmin()) return;
     const name=(document.getElementById("p-name").value||"").trim();
@@ -4281,6 +4392,11 @@ document.addEventListener("click", async function(ev){
       rate: rateRaw?r2(parseFloat(rateRaw)||0):"",
       notes:(document.getElementById("p-notes").value||"").trim(),
       updatedAt:new Date().toISOString()});
+    const qn=id2=>{ const e=document.getElementById(id2); return e?numIn(e.value):0; };
+    const offSel=(document.getElementById("p-offer")||{}).value||"";
+    const offO=offSel?(S.offers||[]).find(o=>o.id===offSel):null;
+    body.quote={total:qn("p-qtotal"), hours:qn("p-qhours"), labour:qn("p-qlabour"), material:qn("p-qmat"),
+      travel:qn("p-qtravel"), other:qn("p-qother"), offerId:offSel, offerNr:offO?(offO.nr||""):((old.quote||{}).offerId===offSel?(old.quote||{}).offerNr||"":"")};
     /* Spara när och av vem ett projekt avslutades. Öppnas det igen tas markeringen bort. */
     if(status==="avslutad" && pStatus(old)!=="avslutad"){ body.archivedAt=new Date().toISOString(); body.archivedBy=S.me?S.me.name:""; }
     if(status!=="avslutad"){ delete body.archivedAt; delete body.archivedBy; }
@@ -4417,6 +4533,17 @@ document.addEventListener("change", async function(ev){
     if(ok){ const i=S.projects.findIndex(x=>x.id===p.id); if(i>=0) S.projects[i]=body; }
     render(); return;
   }
+  if(ev.target.id==="p-offer"){
+    const o=(S.offers||[]).find(x=>x.id===ev.target.value); if(!o||!o.sums) return;
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.value=numOut(v); };
+    set("p-qtotal", o.sums.net); set("p-qhours", o.sums.hours); set("p-qlabour", o.sums.arbete);
+    set("p-qmat", o.sums.material); set("p-qtravel", o.sums.resa); set("p-qother", 0);
+    const n=document.getElementById("p-name"); if(n && !n.value.trim() && o.title) n.value=o.title;
+    const k=document.getElementById("p-kund"); if(k && !k.value.trim() && (o.customer||{}).name) k.value=o.customer.name;
+    toast("Kalkylen är hämtad från offert "+(o.nr||"")+".");
+    return;
+  }
+  if(ev.target.id==="st-scope"){ S.statScope=ev.target.value; render(); return; }
   if(ev.target.id==="f-type"){ syncProjField(); return; }
   if(ev.target.id==="f-proj"){ if(ev.target.value) S.lastProj=ev.target.value; return; }
   if(ev.target.id==="sel-emp"){ if(isAdmin()){ await selectEmployee(ev.target.value); render(); } return; }
@@ -4529,7 +4656,7 @@ async function enterApp(user){
     if(S.deepKor) S.tab="kor";
     if(S.tab==="kor") await loadKor();
     if(S.tab==="attest"||S.tab==="personal") await loadMonthsFor(weekMonths(wkey(S.cursor)));
-    if(S.tab==="projekt") await loadProjectData();
+    if(S.tab==="projekt"||(S.tab==="statistik"&&isAdmin())) await loadProjectData();
     if(S.tab==="kalkyl" && isAdmin()) await loadOffers();
     if(S.tab==="arkiv"){ await loadArchive(); await loadBackups(); }
     if(S.tab==="inkorg" && isSupport()) await loadInbox();
