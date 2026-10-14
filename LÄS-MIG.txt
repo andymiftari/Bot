@@ -7,7 +7,7 @@ ELLINGESMIDE 2.2 – HELA ARBETET
 
    Öppna sedan appen och logga in som admin en gång.
 
-2-firestore-regler-2.2.rules
+firestore.rules
    De nya säkerhetsreglerna. Publiceras FÖRST EFTER att 2.2 är uppladdad:
    Firebase-konsolen > Firestore Database > Rules > markera allt >
    klistra in hela filen > Publish.

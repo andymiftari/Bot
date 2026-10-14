@@ -1,0 +1,66 @@
+# Publicerar Ellingesmide automatiskt vid varje push:
+#   1. Appen i timmar-app/ laddas upp till Cloudflare Pages (projektet "ellingesmide").
+#   2. Därefter publiceras firestore.rules till Firebase.
+# Reglerna går alltid efter appen, så att en ny appversion finns ute innan
+# reglerna som hör till den börjar gälla.
+#
+# Kräver tre repository secrets (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN      API-token med behörigheten "Cloudflare Pages: Edit"
+#   CLOUDFLARE_ACCOUNT_ID     Kontots ID från Cloudflare-panelen
+#   FIREBASE_SERVICE_ACCOUNT  Hela JSON-nyckeln för ett tjänstekonto med rollen
+#                             "Firebase Rules Admin" i projektet tidsrapportering-ellingesmide
+
+name: Publicera Ellingesmide
+
+on:
+  push:
+    branches:
+      - main
+      - claude/odds-lappar-sportsbetting-dyfm54
+    paths:
+      - "timmar-app/**"
+      - "firestore.rules"
+      - "firebase.json"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ellingesmide
+  cancel-in-progress: false
+
+jobs:
+  cloudflare:
+    name: Appen till Cloudflare Pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ladda upp timmar-app
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy timmar-app --project-name=ellingesmide --branch=main --commit-dirty=true
+
+  firestore:
+    name: Säkerhetsregler till Firestore
+    needs: cloudflare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Logga in mot Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Publicera firestore.rules
+        run: npx --yes firebase-tools@13 deploy --only firestore:rules --project tidsrapportering-ellingesmide --non-interactive
