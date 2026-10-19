@@ -202,7 +202,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
      att förfrågan ryms (Gemini tar 20 MB per förfrågan). */
   const OK_MIME = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
   let budget = 18e6;
-  const files = (Array.isArray(body.files) ? body.files : []).slice(0, 12).filter(f => {
+  const files = (Array.isArray(body.files) ? body.files : []).slice(0, 48).filter(f => {
     if (!f || !OK_MIME.includes(f.mime) || typeof f.data !== "string" || !/^[A-Za-z0-9+/=]+$/.test(f.data)) return false;
     budget -= f.data.length; return budget >= 0;
   }).map(f => ({ name: String(f.name || "fil").slice(0, 160), mime: f.mime, data: f.data, from: f.from === "firma" ? "firma" : "kund" }));

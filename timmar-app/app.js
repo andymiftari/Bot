@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.10.1";
+export const APP_VERSION = "2.11.0";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -3559,7 +3559,7 @@ function viewOffer(){
     + '<button class="btn sm primary" data-act="offai"'+(S.aiBusy?' disabled':'')+'>'+(S.aiBusy?'Räknar …':'Räkna med AI')+'</button>'
     + '<button class="btn sm" data-act="offparse">Hämta kontaktuppgifter ur mejlet</button></div>'
     + '<p class="note" id="k-ai-status" style="margin-top:6px">'+esc(S.aiStatus||"")+'</p>'
-    + filesPanel(o.id?"offer:"+o.id:"offer:", "Bilagor till förfrågan", "Ritningar, foton, PDF och Excel från kunden – AI:n läser dem när du räknar. Syns inte i offerten.")
+    + filesPanel(o.id?"offer:"+o.id:"offer:", "Bilagor till förfrågan", "Ritningar, foton, PDF och Excel från kunden, även stora filer – AI:n läser dem när du räknar. Syns inte i offerten.")
     + '</div>'
     + '<div class="panel" style="padding:14px"><h3 style="margin-bottom:8px">Kund</h3><div class="stack">'
     + fld("k-cname","Namn eller företag",cu.name)
@@ -3764,7 +3764,7 @@ function knowledgeText(mail){
   if(String(k.rules||"").trim()) parts.push("## Fasta regler\n"+String(k.rules).trim());
   const ex=pickExamples(mail, 6);
   if(ex.length) parts.push("## Lärda exempel – så har firman räknat liknande jobb\n"+ex.map(exampleText).join("\n\n"));
-  const docs=aiFilesFor("learn").filter(f=>f.kind==="text"&&f.text);
+  const docs=aiFilesFor("learn").filter(f=>f.text);
   if(docs.length) parts.push("## Firmans underlag (uppladdade filer)\n"+docs.map(f=>"### "+f.name+"\n"+f.text).join("\n\n"));
   return parts.join("\n\n").slice(0,80000);
 }
@@ -3896,9 +3896,58 @@ async function handleLearn(act, t){
    (scope "offer:<id>") följer med när den offerten räknas; filer under Lär upp
    AI:n (scope "learn") följer med varje kalkyl – prislistor från leverantörer,
    egna normer och liknande. Excel, CSV och text görs om till text direkt.
-   Bilder och PDF:er sparas som de är, uppdelade i bitar i aifiledata, eftersom
-   ett Firestore-dokument rymmer högst 1 MB. */
-const AIFILE_MAX=8*1024*1024, AICHUNK=900000, AISEND_MAX=14*1024*1024;
+   Bilder och små PDF:er sparas som de är, uppdelade i bitar i aifiledata,
+   eftersom ett Firestore-dokument rymmer högst 1 MB. Stora PDF:er – hundratals
+   MB med ritningar – packas upp i webbläsaren: sidor med text blir text och
+   ritningar och inskannade sidor blir bilder, så att AI:n får det den behöver
+   utan att hela filen skickas. */
+const PDF_ASIS=6*1024*1024, AICHUNK=900000, AISEND_MAX=14*1024*1024;
+const PDF_MAX_PAGES=80, PDF_MAX_IMAGES=30;
+let pdfLoading=null;
+function ensurePdfJs(){
+  if(window.pdfjsLib) return Promise.resolve(true);
+  if(!pdfLoading){
+    pdfLoading=new Promise(function(res){
+      const sc=document.createElement("script");
+      sc.src="lib/pdf.min.js";
+      sc.onload=function(){
+        try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc="lib/pdf.worker.min.js"; }catch(e){}
+        res(!!window.pdfjsLib);
+      };
+      sc.onerror=function(){ pdfLoading=null; res(false); };
+      document.head.appendChild(sc);
+    });
+  }
+  return pdfLoading;
+}
+/* Packar upp en stor PDF sida för sida. */
+async function unpackPdf(file, onProgress){
+  if(!(await ensurePdfJs())) throw new Error("PDF-läsaren kunde inte laddas. Kontrollera nätet och försök igen.");
+  const pdf=await window.pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+  const n=pdf.numPages, last=Math.min(n, PDF_MAX_PAGES);
+  let text="", images=[];
+  for(let p=1;p<=last;p++){
+    if(onProgress) onProgress(p, last);
+    const page=await pdf.getPage(p);
+    const tc=await page.getTextContent();
+    const t=tc.items.map(i=>i.str).join(" ").replace(/\s+/g," ").trim();
+    if(t.length>300 && text.length<60000){ text+="\n--- Sida "+p+" ---\n"+t; }
+    else if(images.length<PDF_MAX_IMAGES){
+      /* ritning eller inskannad sida – som bild, tillräckligt skarp för mått */
+      const vp1=page.getViewport({scale:1}), k=Math.min(3, 1800/Math.max(vp1.width, vp1.height));
+      const vp=page.getViewport({scale:k});
+      const cv=document.createElement("canvas"); cv.width=Math.round(vp.width); cv.height=Math.round(vp.height);
+      const ctx=cv.getContext("2d"); ctx.fillStyle="#fff"; ctx.fillRect(0,0,cv.width,cv.height);
+      await page.render({canvasContext:ctx, viewport:vp}).promise;
+      images.push({page:p, data:cv.toDataURL("image/jpeg",0.72).split(",")[1]||""});
+      if(t) text+="\n--- Sida "+p+" (bild) ---\n"+t;
+    }
+    page.cleanup();
+  }
+  try{ await pdf.destroy(); }catch(e){}
+  const note=n>last?"\n[PDF:en har "+n+" sidor – AI:n läser de första "+last+".]":"";
+  return {text:(text+note).slice(0,60000), images:images, pages:n};
+}
 const aiFilesFor = scope => (S.aiFiles||[]).filter(f=>f.scope===scope);
 const fileSize = n => n>1048576 ? (n/1048576).toFixed(1).replace(".",",")+" MB" : Math.max(1,Math.round((n||0)/1024))+" kB";
 async function readAiFile(file){
@@ -3915,8 +3964,9 @@ async function readAiFile(file){
     return {kind:"inline", mime:"image/jpeg", data:url.split(",")[1]||""};
   }
   if(type==="application/pdf" || /\.pdf$/i.test(name)){
-    if(file.size>AIFILE_MAX) throw new Error(name+" är större än 8 MB. Dela upp PDF:en eller skriv ut bara de sidor som behövs.");
-    return {kind:"inline", mime:"application/pdf", data:await blobToB64(file)};
+    if(file.size<=PDF_ASIS) return {kind:"inline", mime:"application/pdf", data:await blobToB64(file)};
+    const u=await unpackPdf(file, function(p, n){ if(p===1||p%10===0) toast("Packar upp "+name+": sida "+p+" av "+n+" …"); });
+    return {kind:"pages", mime:"application/pdf", text:u.text, images:u.images, pages:u.pages};
   }
   throw new Error(name+": den filtypen kan AI:n inte läsa. Använd PDF, bild, Excel, CSV eller text.");
 }
@@ -3927,7 +3977,17 @@ async function uploadAiFiles(scope, files){
       const r=await readAiFile(file);
       const id=String(Date.now())+"-"+uid();
       const meta={id:id, scope:scope, name:String(file.name||"fil").slice(0,160), mime:r.mime, kind:r.kind,
-        size:file.size||0, text:r.kind==="text"?r.text:"", chunks:0, at:new Date().toISOString(), byName:S.me?S.me.name:""};
+        size:file.size||0, text:r.text||"", chunks:0, at:new Date().toISOString(), byName:S.me?S.me.name:""};
+      if(r.kind==="pages"){
+        /* varje sida som bild för sig: aifiledata/<id>__p<nr>__<bit> */
+        meta.pageList=[];
+        for(const img of r.images){
+          const n=Math.ceil(img.data.length/AICHUNK);
+          for(let i=0;i<n;i++) await Store.set("aifiledata/"+id+"__p"+img.page+"__"+i, {id:id, i:i, data:img.data.slice(i*AICHUNK,(i+1)*AICHUNK)});
+          meta.pageList.push({page:img.page, chunks:n, size:Math.round(img.data.length*0.75)});
+        }
+        meta.pages=r.pages||0;
+      }
       if(r.kind==="inline"){
         const n=Math.ceil(r.data.length/AICHUNK);
         for(let i=0;i<n;i++) await Store.set("aifiledata/"+id+"__"+i, {id:id, i:i, data:r.data.slice(i*AICHUNK,(i+1)*AICHUNK)});
@@ -3943,16 +4003,19 @@ async function deleteAiFile(id){
   const f=(S.aiFiles||[]).find(x=>x.id===id); if(!f) return;
   await Store.del("aifiles/"+id);
   for(let i=0;i<(f.chunks||0);i++){ try{ await Store.del("aifiledata/"+id+"__"+i); }catch(e){ console.error(e); } }
+  for(const p of (f.pageList||[]))
+    for(let i=0;i<p.chunks;i++){ try{ await Store.del("aifiledata/"+id+"__p"+p.page+"__"+i); }catch(e){ console.error(e); } }
   S.aiFiles=(S.aiFiles||[]).filter(x=>x.id!==id);
 }
-async function aiFileData(f){
+async function aiFileData(f, page){
   let out="";
-  for(let i=0;i<(f.chunks||0);i++){ const d=await Store.get("aifiledata/"+f.id+"__"+i); out+=(d&&d.data)||""; }
+  const pre=page?"aifiledata/"+f.id+"__p"+page.page+"__":"aifiledata/"+f.id+"__", n=page?page.chunks:(f.chunks||0);
+  for(let i=0;i<n;i++){ const d=await Store.get(pre+i); out+=(d&&d.data)||""; }
   return out;
 }
 function filesPanel(scope, title, hint){
   const list=aiFilesFor(scope);
-  const label=f=>f.kind==="text"?"text":f.mime==="application/pdf"?"PDF":"bild";
+  const label=f=>f.kind==="text"?"text":f.kind==="pages"?"PDF, "+(f.pages||0)+" sidor uppackad – "+(f.pageList||[]).length+" som bild":f.mime==="application/pdf"?"PDF":"bild";
   return '<div class="aifiles"><div class="aifiles-hd"><div><b>'+title+'</b><div class="note">'+hint+'</div></div>'
     + '<label class="btn sm" style="cursor:pointer">Lägg till fil'
     + '<input type="file" class="aifile-in" data-scope="'+esc(scope)+'" multiple hidden '
@@ -3966,14 +4029,23 @@ function filesPanel(scope, title, hint){
 async function aiFilesPayload(o){
   const own=o.id?aiFilesFor("offer:"+o.id):[], firmF=aiFilesFor("learn");
   const files=[]; let total=0, skipped=[];
+  const from=f=>f.scope==="learn"?"firma":"kund";
   for(const f of own.concat(firmF)){
-    if(f.kind!=="inline") continue;
-    if(total+f.size*1.34>AISEND_MAX){ skipped.push(f.name); continue; }
-    const data=await aiFileData(f); if(!data) continue;
-    total+=data.length;
-    files.push({name:f.name, mime:f.mime, data:data, from:f.scope==="learn"?"firma":"kund"});
+    if(f.kind==="inline"){
+      if(total+f.size*1.34>AISEND_MAX){ skipped.push(f.name); continue; }
+      const data=await aiFileData(f); if(!data) continue;
+      total+=data.length;
+      files.push({name:f.name, mime:f.mime, data:data, from:from(f)});
+    }else if(f.kind==="pages"){
+      for(const p of (f.pageList||[])){
+        if(total+p.size*1.34>AISEND_MAX){ skipped.push(f.name+" s. "+p.page); continue; }
+        const data=await aiFileData(f, p); if(!data) continue;
+        total+=data.length;
+        files.push({name:f.name+", sida "+p.page, mime:"image/jpeg", data:data, from:from(f)});
+      }
+    }
   }
-  const attachText=own.filter(f=>f.kind==="text"&&f.text).map(f=>"### "+f.name+"\n"+f.text).join("\n\n").slice(0,60000);
+  const attachText=own.filter(f=>f.text).map(f=>"### "+f.name+"\n"+f.text).join("\n\n").slice(0,60000);
   return {files:files, attachText:attachText, skipped:skipped};
 }
 
