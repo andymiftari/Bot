@@ -21,6 +21,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Har en profil i personalregistret (alla roller).
+    function isEmployee() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/employees/$(request.auth.uid));
+    }
+
     function profile() {
       return get(/databases/$(database)/documents/employees/$(request.auth.uid)).data;
     }
@@ -217,13 +223,26 @@ service cloud.firestore {
     // med tidrapporten. Appen frågar därför alltid efter empId == sitt eget
     // uid – en bredare fråga nekas här.
     match /trips/{tripId} {
+      // Påbörjade resor syns för alla med profil, så att nästa förare ser att
+      // bilen har en resa igång och kan avsluta den.
       allow read: if isAdmin()
-                  || (signedIn() && resource.data.empId == request.auth.uid);
+                  || (signedIn() && resource.data.empId == request.auth.uid)
+                  || (isEmployee() && resource.data.status == 'open');
       allow create: if isAdmin()
                     || (signedIn() && request.resource.data.empId == request.auth.uid);
+      // Den som avslutar någon annans glömda resa får bara fylla i slutet:
+      // mätare, tid, sträcka och vem som avslutade. Föraren står kvar.
       allow update: if isAdmin()
                     || (signedIn() && resource.data.empId == request.auth.uid
-                        && request.resource.data.empId == request.auth.uid);
+                        && request.resource.data.empId == request.auth.uid)
+                    || (isEmployee()
+                        && resource.data.status == 'open'
+                        && request.resource.data.status == 'done'
+                        && request.resource.data.closedById == request.auth.uid
+                        && request.resource.data.endKm is number
+                        && request.resource.data.endKm > resource.data.startKm
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['endKm', 'endAt', 'km', 'status', 'hasEnd', 'photoEnd', 'closedById', 'closedByName']));
       allow delete: if isAdmin()
                     || (signedIn() && resource.data.empId == request.auth.uid);
     }
@@ -245,7 +264,9 @@ service cloud.firestore {
                         && request.resource.data.data is string
                         && request.resource.data.data.size() < 400000
                         && exists(tripPath())
-                        && get(tripPath()).data.empId == request.auth.uid);
+                        && (get(tripPath()).data.empId == request.auth.uid
+                            || (request.resource.data.which == 'end'
+                                && get(tripPath()).data.get('closedById', '') == request.auth.uid)));
       allow delete: if isAdmin()
                     || (signedIn() && resource.data.empId == request.auth.uid);
     }
@@ -254,10 +275,6 @@ service cloud.firestore {
     // ett foto ändras aldrig i efterhand. Den som tog fotot och superadmin kan
     // ta bort det. Listan (projphotos) har en liten bild, den stora ligger i
     // projphotodata och hämtas en i taget.
-    function isEmployee() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/employees/$(request.auth.uid));
-    }
     function projExists(pid) {
       return exists(/databases/$(database)/documents/projects/$(pid));
     }

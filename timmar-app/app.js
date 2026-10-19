@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.10.0";
+export const APP_VERSION = "2.10.1";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -525,12 +525,12 @@ const vehById = id => S.vehicles.find(v=>v.id===id) || null;
 const vehLabel = v => v ? (v.regnr + (v.name?" · "+v.name:"")) : "Okänd bil";
 const openTrip = (vehId, empId) =>
   S.trips.find(t=>t.vehicleId===vehId && t.empId===empId && t.status==="open") || null;
-/* Den påbörjade resa som den här personen kan avsluta i bilen. I första hand
-   sin egen. Superadmin får dessutom ta över en resa någon annan glömt att
-   avsluta – annars blir den hängande och bilen går inte att använda igen. */
+/* Den påbörjade resa som avslutas i bilen. I första hand sin egen. Har någon
+   annan glömt att avsluta sin resa i bilen kan nästa förare avsluta den –
+   annars blir den hängande och bilen går inte att använda igen. */
 function openTripHere(vehId){
   return openTrip(vehId, S.me.id)
-      || (isAdmin() ? (S.trips.find(t=>t.vehicleId===vehId && t.status==="open") || null) : null);
+      || S.trips.find(t=>t.vehicleId===vehId && t.status==="open") || null;
 }
 /* Adressen som QR-koden i bilen pekar på. */
 function korUrl(vehId){
@@ -553,6 +553,12 @@ async function loadKor(){
     }else{
       S.trips = await Store.list("trips","empId",S.me.id);
     }
+    /* Påbörjade resor i alla bilar, även andras och äldre än perioden, så att
+       en resa någon glömt att avsluta syns på bilen och går att avsluta. */
+    try{
+      const open=await Store.list("trips","status","open");
+      open.forEach(function(t){ if(!S.trips.some(x=>x.id===t.id)) S.trips.push(t); });
+    }catch(e){ console.warn("påbörjade resor", e); }
     S.trips.sort((a,b)=>String(b.startAt||"").localeCompare(String(a.startAt||"")));
     if(isAdmin()) moveTripPhotos().catch(function(e){ console.error("fotoflytt", e); });
   }catch(e){ console.error(e); S.trips=[]; }
@@ -568,6 +574,7 @@ function korRows(){
     if(t.status!=="open" && String(t.startAt||"").slice(0,7)!==ym) return false;
     if(S.korVeh && t.vehicleId!==S.korVeh) return false;
     if(isAdmin() && S.korWho!=="alla" && t.empId!==S.korWho) return false;
+    if(!isAdmin() && t.empId!==S.me.id) return false;
     return true;
   });
 }
@@ -704,7 +711,7 @@ function topbar(){
     : [["tid",cfg("tabs.mitt")],["kor",cfg("tabs.kor")],["projekt",cfg("tabs.projekt")]];
   return '<div class="topbar">'
     + '<div class="brand"><span class="logo-mark" aria-hidden="true"></span><h1>'+esc(cfg("appName"))+'</h1>'
-    + '<span class="eyebrow">'+esc(cfg("tagline"))+'</span></div>'
+    + '</div>'
     + (S.installEvt?'<button class="btn sm" data-act="install">Installera appen</button>':'')
     + (S.updateReady?'<button class="btn sm primary" data-act="doupdate" title="En ny version av appen finns">Uppdatera appen</button>':'')
     + '<button class="userchip" data-act="memenu"><span class="avatar">'+esc(initials(me.name))+'</span>'
@@ -1694,7 +1701,6 @@ function viewUtseende(){
   return '<div class="grid2" style="margin-top:6px">'
     + '<div class="panel" style="padding:16px"><h3>Namn och texter</h3><div class="stack" style="margin-top:12px">'
     + '<label class="fld"><span class="eyebrow">Appens namn</span><input id="b-name" type="text" value="'+esc(cfg("appName"))+'"></label>'
-    + '<label class="fld"><span class="eyebrow">Underrubrik</span><input id="b-tag" type="text" value="'+esc(cfg("tagline"))+'"></label>'
     + '<label class="fld"><span class="eyebrow">Företagsnamn (visas i exporter)</span><input id="b-comp" type="text" value="'+esc(cfg("company"))+'"></label>'
     + '<label class="fld"><span class="eyebrow">Hjälptext på inloggningen</span><input id="b-login" type="text" value="'+esc(cfg("loginHelp"))+'"></label>'
     + '<label class="fld"><span class="eyebrow">Text på supportlänken</span><input id="b-sup" type="text" value="'+esc(cfg("supportLabel"))+'"></label>'
@@ -2302,7 +2308,8 @@ function tripModal(tripId, err){
     + '<label class="fld"><span class="eyebrow">Mätare start (km)</span>'
     + '<input id="t-start" type="text" inputmode="numeric" value="'+esc(t.startKm||"")+'"'+(editable?"":" disabled")+'></label>'
     + '<label class="fld"><span class="eyebrow">Mätare slut (km)</span>'
-    + '<input id="t-end" type="text" inputmode="numeric" value="'+esc(t.endKm||"")+'"'+(editable?"":" disabled")+'></label>'
+    + '<input id="t-end" type="text" inputmode="numeric" value="'+esc(t.endKm||"")+'"'
+    + (t.status==="open"?' placeholder="Fyll i för att avsluta"':'')+(editable?"":" disabled")+'></label>'
     + '</div>'
     + '<label class="fld"><span class="eyebrow">Projekt</span><select id="t-proj"'+(editable?"":" disabled")+'>'+projOpts+'</select></label>'
     + '<label class="fld"><span class="eyebrow">Typ av resa</span><select id="t-kind"'+(editable?"":" disabled")+'>'
@@ -2310,7 +2317,10 @@ function tripModal(tripId, err){
     + '<option value="privat"'+(t.kind==="privat"?" selected":"")+'>Privat resa</option></select></label>'
     + '<label class="fld"><span class="eyebrow">Ärende / vart</span>'
     + '<input id="t-purpose" type="text" value="'+esc(t.purpose||"")+'"'+(editable?"":" disabled")+'></label>'
-    + (t.status==="done"?'<p class="note">Sträcka: <b>'+mfm.format(t.km||0)+' km</b> ('+fmt(milOf(t.km))+' mil)</p>':'')
+    + (t.status==="done"?'<p class="note">Sträcka: <b>'+mfm.format(t.km||0)+' km</b> ('+fmt(milOf(t.km))+' mil)'
+      + (t.closedByName&&t.closedById!==t.empId?' · avslutad av '+esc(t.closedByName):'')+'</p>'
+      : (editable?'<p class="note">Resan pågår. Fyll i mätaren vid slut och tryck på <b>Avsluta resan</b>'
+        + (t.empId!==S.me.id?' – resan står kvar på '+esc(t.empName||"föraren som startade den"):'')+'.</p>':''))
     + (t.photoStart||t.photoEnd||t.hasStart||t.hasEnd
       ? '<div><span class="eyebrow">Foto på mätaren</span><div class="form even" style="margin-top:6px">'
         + (t.photoStart||t.hasStart?'<img id="tp-start" src="'+esc(t.photoStart||"")+'" alt="Mätare vid start" style="width:100%;min-height:40px;border-radius:8px;border:1px solid var(--line)">':'')
@@ -2321,7 +2331,8 @@ function tripModal(tripId, err){
     + '<div class="mf">'
     + (editable?'<button class="btn ghost" data-act="deltrip" data-t="'+esc(tripId)+'">Ta bort</button>':'')
     + '<button class="btn" data-act="close">Stäng</button>'
-    + (editable?'<button class="btn primary" data-act="savetrip" data-t="'+esc(tripId)+'">Spara</button>':'')
+    + (editable?'<button class="btn'+(t.status==="open"?"":" primary")+'" data-act="savetrip" data-t="'+esc(tripId)+'">Spara</button>':'')
+    + (editable&&t.status==="open"?'<button class="btn primary" data-act="savetrip" data-end="1" data-t="'+esc(tripId)+'">Avsluta resan</button>':'')
     + '</div>');
 }
 
@@ -3186,7 +3197,7 @@ async function sendSupport(){
 /* ============================ inloggning & uppstart ============================ */
 function viewSetup(){
   return '<div class="setup">'
-    + '<div class="brand" style="margin-bottom:18px"><span class="dot"></span><h1>'+esc(cfg("appName"))+'</h1><span class="eyebrow">Tid &amp; projekt</span></div>'
+    + '<div class="brand" style="margin-bottom:18px"><span class="dot"></span><h1>'+esc(cfg("appName"))+'</h1></div>'
     + '<div class="panel" style="padding:20px">'
     + '<span class="eyebrow">Ett steg kvar</span>'
     + '<h2 style="font-size:22px;margin:6px 0 8px">Appen är inte kopplad till någon databas ännu</h2>'
@@ -3201,8 +3212,7 @@ function viewSetup(){
 }
 function viewLogin(){
   return '<div class="login"><span class="watermark" aria-hidden="true"></span><div class="loginbox">'
-    + '<div class="loginbrand"><span class="logo-full" role="img" aria-label="'+esc(cfg("appName"))+'"></span>'
-    + '<span class="eyebrow">'+esc(cfg("tagline"))+'</span></div>'
+    + '<div class="loginbrand"><span class="logo-full" role="img" aria-label="'+esc(cfg("appName"))+'"></span></div>'
     + '<div class="panel">'
     + '<h3 style="font-size:18px">Logga in</h3>'
     + '<p class="note" style="margin:4px 0 14px">'+esc(cfg("loginHelp"))+'</p>'
@@ -3276,7 +3286,7 @@ function viewFixup(){
 }
 function viewOnboarding(){
   return '<div class="login"><div class="loginbox">'
-    + '<div class="brand"><span class="dot"></span><h1>'+esc(cfg("appName"))+'</h1><span class="eyebrow">Tid &amp; projekt</span></div>'
+    + '<div class="brand"><span class="dot"></span><h1>'+esc(cfg("appName"))+'</h1></div>'
     + '<div class="panel">'
     + '<span class="eyebrow">Första gången</span>'
     + '<h3 style="font-size:18px;margin-top:4px">Skapa superadmin-kontot</h3>'
@@ -4531,15 +4541,25 @@ document.addEventListener("click", async function(ev){
       if(!prev) return scanModal(vid, phase, "Resan hittades inte längre.");
       if(km<=(+prev.startKm||0))
         return scanModal(vid, phase, "Slutvärdet måste vara högre än startvärdet ("+mfm.format(prev.startKm)+" km).");
+      const other=prev.empId!==S.me.id;
       const body=Object.assign({}, prev, {endKm:km, endAt:new Date().toISOString(),
         km:km-(+prev.startKm||0), photoEnd:"", hasEnd:!!photo, status:"done"});
+      if(other){ body.closedById=S.me.id; body.closedByName=S.me.name; }
       delete body._id;
       const ok=await guard(async function(){
-        if(photo) await saveTripPhoto(prev.id, prev.empId, "end", photo);
-        await Store.set("trips/"+prev.id, body);
+        /* Avslutar man någon annans resa sparas resan först – säkerhetsreglerna
+           släpper bara in slutfotot när resan visar vem som avslutade den. */
+        if(other && !isAdmin()){
+          await Store.set("trips/"+prev.id, body);
+          if(photo){ try{ await saveTripPhoto(prev.id, S.me.id, "end", photo); }catch(e){ console.error(e); } }
+        }else{
+          if(photo) await saveTripPhoto(prev.id, prev.empId, "end", photo);
+          await Store.set("trips/"+prev.id, body);
+        }
         const i=S.trips.findIndex(x=>x.id===prev.id);
         if(i>=0) S.trips[i]=body;
-      }, "Resan är sparad: "+mfm.format(body.km)+" km ("+fmt(milOf(body.km))+" mil).");
+      }, (other?"Resan som "+(prev.empName||"en annan förare")+" startade är avslutad: ":"Resan är sparad: ")
+         +mfm.format(body.km)+" km ("+fmt(milOf(body.km))+" mil).");
       if(S.scan) S.scan.saving=false;
       if(!ok) return;
       ocrLearnAfterSave(vid, km, ocrCells, ocrRead);
@@ -4560,19 +4580,25 @@ document.addEventListener("click", async function(ev){
     const s=parseInt(String((document.getElementById("t-start")||{}).value||"").replace(/\D/g,""),10);
     const e=parseInt(String((document.getElementById("t-end")||{}).value||"").replace(/\D/g,""),10);
     if(!s || isNaN(s)) return tripModal(id,"Startvärdet måste vara ett tal.");
-    if(old.status==="done" && (!e || isNaN(e) || e<=s))
+    const closing=old.status==="open" && t.dataset.end==="1";
+    if(closing && (!e || isNaN(e)))
+      return tripModal(id,"Fyll i mätarställningen vid slut för att avsluta resan.");
+    if((old.status==="done"||closing) && (!e || isNaN(e) || e<=s))
       return tripModal(id,"Slutvärdet måste vara högre än startvärdet.");
+    const done=old.status==="done"||closing;
     const body=Object.assign({}, old, {
-      startKm:s, endKm:old.status==="done"?e:0, km:old.status==="done"?e-s:0,
+      startKm:s, endKm:done?e:0, km:done?e-s:0, status:done?"done":old.status,
+      endAt:closing?new Date().toISOString():(old.endAt||""),
       projectId:(document.getElementById("t-proj")||{}).value||"",
       kind:(document.getElementById("t-kind")||{}).value||"tjanst",
       purpose:((document.getElementById("t-purpose")||{}).value||"").trim()});
+    if(closing && old.empId!==S.me.id){ body.closedById=S.me.id; body.closedByName=S.me.name; }
     delete body._id;
     await guard(async function(){
       await Store.set("trips/"+id, body);
       const i=S.trips.findIndex(x=>x.id===id);
       if(i>=0) S.trips[i]=body;
-    }, "Resan är uppdaterad.");
+    }, closing?"Resan är avslutad: "+mfm.format(e-s)+" km.":"Resan är uppdaterad.");
     closeModal(); render(); return;
   }
   if(act==="deltrip"){
@@ -4687,7 +4713,7 @@ document.addEventListener("click", async function(ev){
     const ink = inkSel==="custom" ? val("b-inkhex") : inkSel;
     const body={
       appName:val("b-name")||DEFAULTS.appName,
-      tagline:val("b-tag"),
+      tagline:cfg("tagline",""),
       company:val("b-comp"),
       loginHelp:val("b-login"),
       supportLabel:val("b-sup")||DEFAULTS.supportLabel,
