@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.8.0";
+export const APP_VERSION = "2.9.0";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -713,7 +713,7 @@ function topbar(){
     + '</div>'
     + '<div class="tabs" role="tablist">'
     + tabs.map(t=>'<button class="tab" role="tab" aria-selected="'+(S.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+'</button>').join("")
-    + '</div>';
+    + '</div><div class="temper" aria-hidden="true"></div>';
 }
 
 /* ============================ tidrapport ============================ */
