@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.12.0";
+export const APP_VERSION = "2.12.1";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
