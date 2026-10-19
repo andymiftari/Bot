@@ -236,6 +236,49 @@ service cloud.firestore {
                     || (signedIn() && resource.data.empId == request.auth.uid);
     }
 
+    // Foton i projekten. Alla med en profil ser foton och kan lägga till egna;
+    // ett foto ändras aldrig i efterhand. Den som tog fotot och superadmin kan
+    // ta bort det. Listan (projphotos) har en liten bild, den stora ligger i
+    // projphotodata och hämtas en i taget.
+    function isEmployee() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/employees/$(request.auth.uid));
+    }
+    function projExists(pid) {
+      return exists(/databases/$(database)/documents/projects/$(pid));
+    }
+    match /projphotos/{id} {
+      allow read: if isEmployee() || isAdmin();
+      allow create: if isAdmin()
+        || (isEmployee()
+            && request.resource.data.keys().hasOnly(['id', 'projectId', 'thumb', 'note', 'byId', 'byName', 'at'])
+            && request.resource.data.id == id
+            && request.resource.data.byId == request.auth.uid
+            && request.resource.data.thumb is string
+            && request.resource.data.thumb.size() < 120000
+            && request.resource.data.note is string
+            && request.resource.data.note.size() <= 200
+            && projExists(request.resource.data.projectId));
+      allow update: if false;
+      allow delete: if isAdmin()
+        || (isEmployee() && resource.data.byId == request.auth.uid);
+    }
+    match /projphotodata/{id} {
+      allow get: if isEmployee() || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin()
+        || (isEmployee()
+            && request.resource.data.keys().hasOnly(['id', 'projectId', 'byId', 'data'])
+            && request.resource.data.id == id
+            && request.resource.data.byId == request.auth.uid
+            && request.resource.data.data is string
+            && request.resource.data.data.size() < 900000
+            && projExists(request.resource.data.projectId));
+      allow update: if false;
+      allow delete: if isAdmin()
+        || (isEmployee() && resource.data.byId == request.auth.uid);
+    }
+
     // Dagliga säkerhetskopior av hela databasen. Bara superadmin och support
     // rör dem – de innehåller allt, även personalens uppgifter.
     match /backups/{docId} {

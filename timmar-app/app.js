@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.6.1";
+export const APP_VERSION = "2.7.0";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -34,7 +34,7 @@ const DEFAULTS = {
   supportLabel:"Behöver du hjälp? Skicka en supportförfrågan",
   tabs:{tid:"Tidrapport", mitt:"Min tidrapport", kor:"Körjournal", projekt:"Projekt", attest:"Veckoattest",
         arkiv:"Arkiv", personal:"Personal & konton", listor:"Listor", kalkyl:"Kalkyl",
-        inkorg:"Inkorg", utseende:"Utseende & texter", statistik:"Statistik"},
+        inkorg:"Inkorg", utseende:"Utseende & texter", statistik:"Statistik", lon:"Löneunderlag"},
   roles:{arbetare:"Arbetare", admin:"Superadmin", support:"Support"},
   theme:{mode:"auto", ink:"", ground:""},
   vat:25
@@ -698,7 +698,7 @@ function topbar(){
   const me=S.me;
   /* Körjournalen ligger direkt efter tidrapporten och finns för alla roller. */
   const tabs = isAdmin()
-    ? [["tid",cfg("tabs.tid")],["kor",cfg("tabs.kor")],["projekt",cfg("tabs.projekt")],["statistik",cfg("tabs.statistik")],["kalkyl",cfg("tabs.kalkyl")],["attest",cfg("tabs.attest")],
+    ? [["tid",cfg("tabs.tid")],["kor",cfg("tabs.kor")],["projekt",cfg("tabs.projekt")],["statistik",cfg("tabs.statistik")],["kalkyl",cfg("tabs.kalkyl")],["attest",cfg("tabs.attest")],["lon",cfg("tabs.lon")],
        ["arkiv",cfg("tabs.arkiv")],["personal",cfg("tabs.personal")],["listor",cfg("tabs.listor")]]
       .concat(isSupport()?[["inkorg",cfg("tabs.inkorg")],["utseende",cfg("tabs.utseende")]]:[])
     : [["tid",cfg("tabs.mitt")],["kor",cfg("tabs.kor")],["projekt",cfg("tabs.projekt")]];
@@ -738,7 +738,38 @@ function viewTid(){
   const body = S.view==="month" ? calMonth(emp) : S.view==="week" ? calWeek(emp) : calDay(emp);
   return head + '<div class="layout"><div>'+body+'</div>'+ rail(emp) +'</div>';
 }
+/* Påminnelser i appen, utan stämpling: igår saknar tid, och från fredag lunch
+   tills veckan är inskickad en påminnelse om att skicka in den innan helgen. */
 function nudge(emp){
+  return nudgeLastWeek(emp) + nudgeThisWeek(emp) + nudgeYesterday(emp);
+}
+function nudgeYesterday(emp){
+  const now=new Date(), y=new Date(now); y.setDate(now.getDate()-1);
+  /* på måndagen gäller det fredagen */
+  while(!isWorkday(dkey(y))) y.setDate(y.getDate()-1);
+  const ds=dkey(y);
+  if(now-y > 4*86400000) return "";
+  const st=approvalOf(emp.id,wkey(y)).status;
+  if(st==="inskickad"||st==="godkand") return "";
+  if(entriesFor(emp.id, ds).length) return "";
+  const mine=S.me.id===emp.id;
+  return '<div class="banner"><span class="eyebrow">Påminnelse</span>'
+    + '<span>'+(mine?"Du har":esc(emp.name)+" har")+' ingen tid registrerad för '+DAYS[isoDow(y)]+' '+y.getDate()+' '+MONTHS[y.getMonth()]+'.</span>'
+    + '<button class="btn sm" style="margin-left:auto" data-act="nudgeday" data-d="'+ds+'">Fyll i '+DAYS[isoDow(y)]+'</button></div>';
+}
+function nudgeThisWeek(emp){
+  const now=new Date(), dow=isoDow(now);
+  if(dow<4 || (dow===4 && now.getHours()<12)) return "";
+  const wk=wkey(now), st=approvalOf(emp.id,wk).status;
+  if(st==="inskickad"||st==="godkand") return "";
+  const s=weekStats(emp.id,wk), mine=S.me.id===emp.id;
+  const miss=s.missing.length;
+  return '<div class="banner"><span class="eyebrow">Vecka '+wkNo(wk)+'</span>'
+    + '<span>Dags att skicka in '+(mine?"din":esc(emp.name)+"s")+' tidrapport för veckan'
+    + (miss?' – '+miss+' arbetsdag'+(miss>1?"ar":"")+' saknar tid':'')+'. Kontrollera timmarna och skicka in innan helgen.</span>'
+    + '<button class="btn sm primary" style="margin-left:auto" data-act="submitwk" data-w="'+wk+'">Skicka in vecka '+wkNo(wk)+'</button></div>';
+}
+function nudgeLastWeek(emp){
   const prev=new Date(); prev.setDate(prev.getDate()-7);
   const wk=wkey(prev), st=approvalOf(emp.id,wk).status;
   if(st==="inskickad"||st==="godkand") return "";
@@ -1143,6 +1174,207 @@ function viewStatistik(){
     + '<tbody>'+(rows||'<tr><td colspan="10" class="empty">Inga projekt i urvalet.</td></tr>')+'</tbody></table></div>'
     + (withQ<list.length?'<p class="note" style="margin-top:10px">'+(list.length-withQ)+' projekt saknar kalkyl. Lägg in offererat pris under Projekt → Ändra projekt.</p>':'');
 }
+/* ============================ löneunderlag ============================ */
+/* En månad i taget: arbetad tid, övertid och frånvaro per medarbetare, och
+   samma timmar fördelade på projekt. Ingen stämpling – allt räknas på det
+   som är registrerat i tidrapporten. */
+const lonYm = () => S.lonMonth || mkey(new Date());
+async function loadLon(){
+  if(!isAdmin()) return;
+  const ym=lonYm();
+  await loadMonthsFor([ym]);
+  const appr=[];
+  for(const wk of weeksInMonth(ym)){
+    try{ (await Store.list("approvals","week",wk)).forEach(a=>appr.push(a)); }catch(e){ console.error(e); }
+  }
+  S.lonAppr=appr;
+}
+const absKeys = () => typeKeys().filter(k=>typeOf(k).abs);
+/* Arbetad tid är allt som inte är frånvaro, utom övertiden som redovisas för sig. */
+function lonRow(empId, ym){
+  const st=monthStats(empId, ym, S.everyMonth);
+  const abs={}; let absSum=0, ot=0, work=0;
+  Object.keys(st.byType).forEach(function(k){
+    const h=st.byType[k];
+    if(typeOf(k).abs){ abs[k]=r2((abs[k]||0)+h); absSum+=h; }
+    else if(k==="overtid") ot+=h;
+    else work+=h;
+  });
+  const weeks=weeksInMonth(ym);
+  const okW=weeks.filter(wk=>(S.lonAppr||[]).some(a=>a.empId===empId && a.week===wk && a.status==="godkand")).length;
+  return {work:r2(work), ot:r2(ot), abs:abs, absSum:r2(absSum), total:r2(work+ot+absSum),
+          missing:st.missing, weeks:weeks.length, okWeeks:okW};
+}
+/* Timmar per medarbetare och projekt, med övertiden för sig. */
+function lonProjRows(ym){
+  const out=[];
+  S.employees.forEach(function(e){
+    const by={};
+    monthDates(ym).forEach(function(ds){
+      entriesFor(e.id, ds, S.everyMonth).forEach(function(x){
+        if(typeOf(x.type).abs) return;
+        const k=x.projectId||"_";
+        const r=by[k]||(by[k]={work:0, ot:0});
+        if(x.type==="overtid") r.ot+=+x.hours||0; else r.work+=+x.hours||0;
+      });
+    });
+    Object.keys(by).forEach(function(k){
+      const p=k==="_"?null:projById(k);
+      out.push({empId:e.id, empName:e.name, projectId:k==="_"?"":k,
+        kod:p?(p.kod||""):"", proj:p?p.name:(k==="_"?"Utan projekt":"Okänt projekt"),
+        work:r2(by[k].work), ot:r2(by[k].ot), total:r2(by[k].work+by[k].ot)});
+    });
+  });
+  return out.sort((a,b)=>String(a.empName).localeCompare(String(b.empName),"sv") || b.total-a.total);
+}
+function viewLon(){
+  const ym=lonYm(), ak=absKeys();
+  const rows=S.employees.map(e=>Object.assign({emp:e}, lonRow(e.id, ym)));
+  const tot={work:0, ot:0, absSum:0, total:0, abs:{}};
+  rows.forEach(function(r){
+    tot.work+=r.work; tot.ot+=r.ot; tot.absSum+=r.absSum; tot.total+=r.total;
+    ak.forEach(k=>{ tot.abs[k]=(tot.abs[k]||0)+(r.abs[k]||0); });
+  });
+  const h=v=>v?fmt(v):'<span class="note">–</span>';
+  const body=rows.map(r=>'<tr><td><b>'+esc(r.emp.name)+'</b></td>'
+    + '<td class="r">'+h(r.work)+'</td><td class="r">'+h(r.ot)+'</td>'
+    + ak.map(k=>'<td class="r">'+h(r.abs[k])+'</td>').join("")
+    + '<td class="r"><b>'+fmt(r.total)+'</b></td>'
+    + '<td class="r">'+(r.missing.length?'<span class="dev near" title="'+esc(r.missing.join(", "))+'">'+r.missing.length+'</span>':'<span class="note">0</span>')+'</td>'
+    + '<td class="r">'+(r.okWeeks===r.weeks?'<span class="pill ok">'+r.okWeeks+'/'+r.weeks+'</span>':'<span class="note">'+r.okWeeks+'/'+r.weeks+'</span>')+'</td></tr>').join("");
+  const pr=lonProjRows(ym);
+  const pbody=pr.map(r=>'<tr><td>'+esc(r.empName)+'</td><td><span class="code">'+esc(r.kod||"—")+'</span> '+esc(r.proj)+'</td>'
+    + '<td class="r">'+h(r.work)+'</td><td class="r">'+h(r.ot)+'</td><td class="r"><b>'+fmt(r.total)+'</b></td></tr>').join("");
+  const allOk=rows.every(r=>r.okWeeks===r.weeks || !r.total);
+  return '<div class="bar"><div class="navgroup"><button class="btn sm" data-act="lonprev">‹</button>'
+    + '<div class="per">'+cap(monthName(ym))+'<small>'+weeksInMonth(ym).map(wkNo).map(n=>"v"+n).join(" · ")+'</small></div>'
+    + '<button class="btn sm" data-act="lonnext">›</button></div>'
+    + '<button class="btn sm" data-act="lonnow">Denna månad</button>'
+    + '<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-act="xlslon">Exportera till Excel</button></div></div>'
+    + (allOk?'':'<div class="banner"><span class="eyebrow">Obs</span><span>Alla veckor i månaden är inte attesterade än. Siffrorna kan ändras tills de är det.</span></div>')
+    + '<div class="kpis" style="margin-bottom:14px">'
+    + '<div class="kpi"><span class="eyebrow">Arbetad tid</span><div class="v">'+fmt(r2(tot.work))+'<s>h</s></div></div>'
+    + '<div class="kpi"><span class="eyebrow">Övertid</span><div class="v">'+fmt(r2(tot.ot))+'<s>h</s></div></div>'
+    + '<div class="kpi"><span class="eyebrow">Frånvaro</span><div class="v">'+fmt(r2(tot.absSum))+'<s>h</s></div></div>'
+    + '<div class="kpi"><span class="eyebrow">Totalt registrerat</span><div class="v">'+fmt(r2(tot.total))+'<s>h</s></div></div>'
+    + '</div>'
+    + '<div class="panel" style="margin-bottom:14px"><div class="hd"><h3>Per medarbetare</h3><span class="note">Arbetad tid är allt utom övertid och frånvaro</span></div>'
+    + '<div class="tblwrap" style="border:0"><table class="tbl"><thead><tr><th>Namn</th><th class="r">Arbetad tid</th><th class="r">Övertid</th>'
+    + ak.map(k=>'<th class="r">'+esc(typeOf(k).label)+'</th>').join("")
+    + '<th class="r">Totalt</th><th class="r">Saknade dagar</th><th class="r">Attesterade veckor</th></tr></thead><tbody>'
+    + (body||'<tr><td colspan="'+(6+ak.length)+'" class="empty">Ingen personal.</td></tr>')
+    + '</tbody><tfoot><tr><td><b>Summa</b></td><td class="r"><b>'+fmt(r2(tot.work))+'</b></td><td class="r"><b>'+fmt(r2(tot.ot))+'</b></td>'
+    + ak.map(k=>'<td class="r"><b>'+fmt(r2(tot.abs[k]||0))+'</b></td>').join("")
+    + '<td class="r"><b>'+fmt(r2(tot.total))+'</b></td><td></td><td></td></tr></tfoot></table></div></div>'
+    + '<div class="panel"><div class="hd"><h3>Arbetade timmar per projekt</h3><span class="note">'+esc(cap(monthName(ym)))+'</span></div>'
+    + '<div class="tblwrap" style="border:0"><table class="tbl"><thead><tr><th>Medarbetare</th><th>Projekt</th><th class="r">Arbetad tid</th><th class="r">Övertid</th><th class="r">Totalt</th></tr></thead><tbody>'
+    + (pbody||'<tr><td colspan="5" class="empty">Ingen arbetad tid den här månaden.</td></tr>')
+    + '</tbody></table></div></div>';
+}
+function lonWorkbook(ym){
+  const wb=XLSX.utils.book_new(), ak=absKeys();
+  const head=["Medarbetare","Arbetad tid (h)","Övertid (h)"].concat(ak.map(k=>typeOf(k).label+" (h)"))
+    .concat(["Frånvaro totalt (h)","Totalt (h)","Saknade dagar","Attesterade veckor"]);
+  const rows=[head];
+  S.employees.forEach(function(e){
+    const r=lonRow(e.id, ym);
+    rows.push([e.name, r.work, r.ot].concat(ak.map(k=>r.abs[k]||0)).concat([r.absSum, r.total, r.missing.length, r.okWeeks+"/"+r.weeks]));
+  });
+  const fm={}; for(let c=1;c<=ak.length+4;c++) fm[c]=H2;
+  XLSX.utils.book_append_sheet(wb, sheetFrom(rows,[24,14,12].concat(ak.map(()=>14)).concat([16,12,14,18]),fm), "Löneunderlag");
+  const pr=[["Medarbetare","Projektkod","Projekt","Arbetad tid (h)","Övertid (h)","Totalt (h)"]]
+    .concat(lonProjRows(ym).map(r=>[r.empName, r.kod, r.proj, r.work, r.ot, r.total]));
+  XLSX.utils.book_append_sheet(wb, sheetFrom(pr,[24,12,30,14,12,12],{3:H2,4:H2,5:H2}), "Per projekt");
+  const dr=[["Medarbetare","Datum","Vecka","Veckodag","Typ","Projektkod","Projekt","Timmar","Notering"]];
+  S.employees.forEach(function(e){
+    monthDates(ym).forEach(function(ds){
+      entriesFor(e.id, ds, S.everyMonth).forEach(function(x){
+        const p=x.projectId?projById(x.projectId):null, d=fromKey(ds);
+        dr.push([e.name, ds, isoWeek(d), DAYS[isoDow(d)], typeOf(x.type).label, p?(p.kod||""):"", p?p.name:"", +x.hours||0, x.note||""]);
+      });
+    });
+  });
+  XLSX.utils.book_append_sheet(wb, sheetFrom(dr,[24,12,7,10,16,12,30,9,34],{7:H2}), "Alla poster");
+  return wb;
+}
+
+/* ============================ projektfoton ============================ */
+/* Montörerna fotar på plats. Varje foto sparas som en liten bild för listan
+   (projphotos) och en större för att titta på (projphotodata), så att listan
+   går fort att hämta även när ett projekt har många foton. */
+async function loadProjPhotos(pid){
+  try{
+    const rows=await Store.list("projphotos","projectId",pid);
+    S.projPhotos=rows.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+  }catch(e){ console.error(e); S.projPhotos=[]; }
+  S.projPhotosFor=pid;
+}
+function shrinkImage(file, max, q){
+  return new Promise(function(res, rej){
+    const url=URL.createObjectURL(file), img=new Image();
+    img.onload=function(){
+      const k=Math.min(1, max/Math.max(img.naturalWidth, img.naturalHeight));
+      const cv=document.createElement("canvas");
+      cv.width=Math.round(img.naturalWidth*k); cv.height=Math.round(img.naturalHeight*k);
+      cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
+      URL.revokeObjectURL(url);
+      res(cv.toDataURL("image/jpeg", q));
+    };
+    img.onerror=function(){ URL.revokeObjectURL(url); rej(new Error("Bilden gick inte att läsa.")); };
+    img.src=url;
+  });
+}
+function photoPanel(pid){
+  if(S.projPhotosFor!==pid){
+    S.projPhotosFor=pid; S.projPhotos=null;
+    loadProjPhotos(pid).then(()=>{ if(S.projSel===pid) render(); });
+  }
+  const list=S.projPhotos;
+  const grid = list===null ? '<p class="note">Hämtar foton…</p>'
+    : list.length ? '<div class="photogrid">'+list.map(f=>'<button class="photo" data-act="photoview" data-f="'+esc(f.id)+'" title="'+esc((f.note||"")+" · "+(f.byName||"")+" · "+String(f.at).slice(0,10))+'">'
+        + '<img src="'+esc(f.thumb)+'" alt="'+esc(f.note||"Foto")+'" loading="lazy">'
+        + '<span class="cap">'+esc(String(f.at).slice(0,10))+(f.note?' · '+esc(f.note):'')+'</span></button>').join("")+'</div>'
+    : '<p class="note">Inga foton än. Fota före, under och efter jobbet – infästningar, mått, skador och det färdiga resultatet.</p>';
+  return '<div class="panel" style="margin-top:14px"><div class="hd"><h3>Foton</h3>'
+    + '<label class="btn sm primary" style="cursor:pointer">Lägg till foto'
+    + '<input type="file" id="photo-in" data-p="'+esc(pid)+'" accept="image/*" capture="environment" multiple hidden></label></div>'
+    + '<div style="padding:12px 16px 16px">'+grid+'</div></div>';
+}
+async function uploadPhotos(pid, files){
+  const note=(prompt("Kort text till fotot (valfritt), t.ex. \"Infästning vägg\":","")||"").trim().slice(0,200);
+  let ok=0;
+  for(const file of files){
+    try{
+      let full=await shrinkImage(file, 1600, 0.72);
+      if(full.length>850000) full=await shrinkImage(file, 1200, 0.6);
+      if(full.length>850000) full=await shrinkImage(file, 900, 0.55);
+      const thumb=await shrinkImage(file, 320, 0.6);
+      const id=String(Date.now())+"-"+uid();
+      const meta={id:id, projectId:pid, thumb:thumb, note:note, byId:S.me.id, byName:S.me.name, at:new Date().toISOString()};
+      await Store.set("projphotodata/"+id, {id:id, projectId:pid, byId:S.me.id, data:full});
+      await Store.set("projphotos/"+id, meta);
+      (S.projPhotos||(S.projPhotos=[])).unshift(meta);
+      ok++;
+    }catch(e){ console.error(e); toast("Ett foto kunde inte sparas: "+(e.message||e)); }
+  }
+  if(ok) toast(ok===1?"Fotot är sparat i projektet.":ok+" foton är sparade i projektet.");
+  render();
+}
+async function viewPhoto(id){
+  const f=(S.projPhotos||[]).find(x=>x.id===id); if(!f) return;
+  const canDel=isAdmin() || f.byId===S.me.id;
+  openModal('<div class="mh"><div><span class="eyebrow">'+esc(String(f.at).slice(0,16).replace("T"," "))+' · '+esc(f.byName||"")+'</span>'
+    + '<h3 style="margin-top:2px">'+esc(f.note||"Foto")+'</h3></div><button class="btn sm ghost" data-act="close">Stäng</button></div>'
+    + '<div class="mb"><img id="pv-img" src="'+esc(f.thumb)+'" alt="" style="width:100%;height:auto;display:block;background:var(--sunken)">'
+    + '<div class="actions">'+(canDel?'<button class="btn ghost" data-act="photodel" data-f="'+esc(f.id)+'">Ta bort fotot</button>':'')
+    + '<a class="btn" id="pv-dl" download="foto-'+esc(String(f.at).slice(0,10))+'.jpg" href="'+esc(f.thumb)+'">Spara bilden</a></div></div>');
+  try{
+    const d=await Store.get("projphotodata/"+id);
+    const img=document.getElementById("pv-img"), a=document.getElementById("pv-dl");
+    if(d && d.data){ if(img) img.src=d.data; if(a) a.href=d.data; }
+  }catch(e){ console.error(e); }
+}
+
 function viewProjekt(){
   if(S.projSel) return projectDetail(S.projSel);
   const dates=periodDates(), admin=isAdmin();
@@ -1292,7 +1524,8 @@ function projectDetail(pid){
     + '<div class="panel" style="margin-top:14px"><div class="hd"><h3>'+(admin?'Tidposter':'Mina tidposter')+'</h3><span class="note">senaste 40 i vald period</span></div>'
     + '<div class="tblwrap" style="border:0"><table class="tbl"><thead><tr><th>Datum</th><th>V</th>'
     + (admin?'<th>Medarbetare</th>':'')+'<th>Typ</th><th>Notering</th><th class="r">Timmar</th></tr></thead>'
-    + '<tbody>'+entRows+'</tbody></table></div></div>';
+    + '<tbody>'+entRows+'</tbody></table></div></div>'
+    + photoPanel(pid);
 }
 
 /* ============================ personal & konton ============================ */
@@ -1469,7 +1702,7 @@ function viewUtseende(){
     + '</div></div>'
     + '<div class="panel" style="padding:16px"><h3>Namn på flikarna</h3><div class="stack" style="margin-top:12px">'
     + [["tid","Tidrapport (superadmin)"],["mitt","Tidrapport (arbetare)"],["projekt","Projekt"],
-       ["statistik","Statistik"],["kalkyl","Kalkyl"],["attest","Veckoattest"],["arkiv","Arkiv"],["personal","Personal"],["inkorg","Inkorg"],["utseende","Utseende"]]
+       ["statistik","Statistik"],["kalkyl","Kalkyl"],["attest","Veckoattest"],["lon","Löneunderlag"],["arkiv","Arkiv"],["personal","Personal"],["inkorg","Inkorg"],["utseende","Utseende"]]
        .map(function(t){ return '<label class="fld"><span class="eyebrow">'+t[1]+'</span>'
          + '<input id="b-tab-'+t[0]+'" type="text" value="'+esc(cfg("tabs."+t[0]))+'"></label>'; }).join("")
     + '</div></div>'
@@ -2581,7 +2814,8 @@ async function archiveFile(meta, blob, filename){
   if(SYNC_URL){
     try{
       const folder=meta.kind==="projekt" ? ("projekt/"+(meta.projectKod||meta.projectId||"projekt"))
-                                         : ("tidrapporter/"+(meta.period||"").replace(/[^\w-]/g,""));
+                 : meta.kind==="lon" ? ("loneunderlag/"+(meta.period||"").replace(/[^\w-]/g,""))
+                                     : ("tidrapporter/"+(meta.period||"").replace(/[^\w-]/g,""));
       const r=await syncCall("upload",{folder:folder, filename:filename, data:b64});
       doc.synced=true; doc.serverPath=(r&&r.path)||"";
     }catch(e){ console.error(e); toast("Filen sparades i arkivet, men kunde inte läggas på servern."); }
@@ -2649,7 +2883,7 @@ function viewArkiv(){
     const when=String(a.createdAt).slice(0,16).replace("T"," ");
     return '<tr><td class="num">'+esc(when)+'</td>'
       + '<td><b>'+esc(a.label)+'</b><div class="note">'+esc(a.filename)+'</div></td>'
-      + '<td>'+(a.kind==="projekt"?"Projekt":"Tidrapport")+'</td>'
+      + '<td>'+(a.kind==="projekt"?"Projekt":a.kind==="lon"?"Löneunderlag":"Tidrapport")+'</td>'
       + '<td>'+esc(a.projectName||a.empName||"—")+'</td>'
       + '<td class="r">'+Math.max(1,Math.round((a.size||0)/1024))+' kB</td>'
       + '<td>'+(a.synced?'<span class="pill">På servern</span>':'<span class="note">—</span>')+'</td>'
@@ -3533,6 +3767,7 @@ function render(){
   else if(S.tab==="utseende" && isSupport()) body=viewUtseende();
   else if(S.tab==="kalkyl" && isAdmin()) body=viewKalkyl();
   else if(S.tab==="statistik" && isAdmin()) body=viewStatistik();
+  else if(S.tab==="lon" && isAdmin()) body=viewLon();
   else if(S.tab==="projekt") body=viewProjekt();
   else if(S.tab==="kor") body=viewKor();
   else body=viewTid();
@@ -3812,6 +4047,7 @@ document.addEventListener("click", async function(ev){
     if(S.tab==="inkorg"){ await loadInbox(); }
     if(S.tab==="kor"){ await loadKor(); }
     if(S.tab==="kalkyl"){ S.off=null; S.offSel=null; await loadOffers(); }
+    if(S.tab==="lon"){ await loadLon(); }
     render(); return;
   }
 
@@ -4097,7 +4333,7 @@ document.addEventListener("click", async function(ev){
       theme:{mode:val("b-mode")||"auto", ink:/^#[0-9a-fA-F]{3,8}$/.test(ink)?ink:"", ground:cfg("theme.ground","")},
       updatedAt:new Date().toISOString(), updatedBy:S.me.name
     };
-    ["tid","mitt","projekt","statistik","kalkyl","attest","arkiv","personal","inkorg","utseende"].forEach(function(k){
+    ["tid","mitt","projekt","statistik","kalkyl","attest","lon","arkiv","personal","inkorg","utseende"].forEach(function(k){
       body.tabs[k]=val("b-tab-"+k)||DEFAULTS.tabs[k];
     });
     ["arbetare","admin","support"].forEach(function(r){ body.roles[r]=val("b-role-"+r)||DEFAULTS.roles[r]; });
@@ -4349,8 +4585,37 @@ document.addEventListener("click", async function(ev){
     await guard(async function(){ await Store.del("costs/"+id); S.costs=S.costs.filter(x=>x.id!==id); }, "Kostnaden är borttagen.");
     closeModal(); render(); return;
   }
-  if(act==="openproj"){ S.projSel=t.dataset.p; render(); return; }
-  if(act==="openarkproj"){ S.tab="projekt"; await loadProjectData(); S.projSel=t.dataset.p; render(); window.scrollTo(0,0); return; }
+  if(act==="lonprev"||act==="lonnext"){
+    const p=lonYm().split("-").map(Number), d=new Date(p[0], p[1]-1+(act==="lonprev"?-1:1), 1);
+    S.lonMonth=mkey(d); await loadLon(); render(); return;
+  }
+  if(act==="lonnow"){ S.lonMonth=mkey(new Date()); await loadLon(); render(); return; }
+  if(act==="xlslon"){
+    if(!isAdmin()) return;
+    if(!(await ensureXLSX())){ toast("Excel-biblioteket kunde inte laddas. Kontrollera nätet och försök igen."); return; }
+    const ym=lonYm(), name="Loneunderlag-"+ym+".xlsx";
+    try{
+      const blob=wbBlob(lonWorkbook(ym));
+      downloadBlob(blob, name);
+      toast("Löneunderlaget laddas ner.");
+      await archiveFile({kind:"lon", label:"Löneunderlag · "+monthName(ym), period:ym}, blob, name);
+    }catch(e){ console.error(e); toast("Kunde inte skapa filen."); }
+    return;
+  }
+  if(act==="nudgeday"){ dayModal(emp, t.dataset.d); return; }
+  if(act==="photoview"){ await viewPhoto(t.dataset.f); return; }
+  if(act==="photodel"){
+    const id=t.dataset.f, f=(S.projPhotos||[]).find(x=>x.id===id); if(!f) return;
+    if(!confirm("Ta bort fotot från projektet?")) return;
+    const ok=await guard(async function(){
+      await Store.del("projphotos/"+id);
+      try{ await Store.del("projphotodata/"+id); }catch(e){ console.error(e); }
+    }, "Fotot är borttaget.");
+    if(ok) S.projPhotos=(S.projPhotos||[]).filter(x=>x.id!==id);
+    closeModal(); render(); return;
+  }
+  if(act==="openproj"){ S.projSel=t.dataset.p; S.projPhotosFor=null; render(); return; }
+  if(act==="openarkproj"){ S.tab="projekt"; await loadProjectData(); S.projSel=t.dataset.p; S.projPhotosFor=null; render(); window.scrollTo(0,0); return; }
   if(act==="backproj"){ S.projSel=null; render(); return; }
 
   /* --- tid --- */
@@ -4650,6 +4915,12 @@ document.addEventListener("change", async function(ev){
     return;
   }
   if(ev.target.id==="st-scope"){ S.statScope=ev.target.value; render(); return; }
+  if(ev.target.id==="photo-in"){
+    const files=Array.from(ev.target.files||[]), pid=ev.target.dataset.p;
+    ev.target.value="";
+    if(files.length && pid) await uploadPhotos(pid, files);
+    return;
+  }
   if(ev.target.id==="f-type"){ syncProjField(); return; }
   if(ev.target.id==="f-proj"){ if(ev.target.value) S.lastProj=ev.target.value; return; }
   if(ev.target.id==="sel-emp"){ if(isAdmin()){ await selectEmployee(ev.target.value); render(); } return; }
@@ -4764,6 +5035,7 @@ async function enterApp(user){
     if(S.tab==="attest"||S.tab==="personal") await loadMonthsFor(weekMonths(wkey(S.cursor)));
     if(S.tab==="projekt"||(S.tab==="statistik"&&isAdmin())) await loadProjectData();
     if(S.tab==="kalkyl" && isAdmin()) await loadOffers();
+    if(S.tab==="lon" && isAdmin()) await loadLon();
     if(S.tab==="arkiv"){ await loadArchive(); await loadBackups(); }
     if(S.tab==="inkorg" && isSupport()) await loadInbox();
     if(isAdmin()){
