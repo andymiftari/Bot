@@ -53,7 +53,7 @@ export async function onRequestPost({ request, env }) {
     const res = await geminiJson(env, {
       system: MILTAL_PROMPT,
       parts: [{ inline_data: { mime_type: m[1], data: m[2] } }, { text: kontext }],
-      temperature: 0, maxTokens: 4096
+      temperature: 0, maxTokens: 8192, task: "miltal"
     });
     const r = res.json || {};
     const km = int(r.odometer_km);

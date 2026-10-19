@@ -153,7 +153,7 @@ async function runGemini(env, userText, send) {
   if (!r) {
     if (!res.text) throw new Error("AI:n gav inget svar" + (res.finish ? " (" + res.finish + ")" : "") + ". Försök igen.");
     send({ status: "Ställer upp raderna …" });
-    const fix = await geminiJson(env, { system: JSON_RULE.replace(/^- /, ""), temperature: 0,
+    const fix = await geminiJson(env, { system: JSON_RULE.replace(/^- /, ""), temperature: 0, task: "format",
       parts: [{ text: "Gör om kalkylen nedan till JSON-objektet. Ändra inga siffror och hitta inte på något.\n\n" + res.text }] });
     r = fix.json;
   }
