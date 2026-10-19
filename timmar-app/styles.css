@@ -447,3 +447,53 @@ h2{font-size:26px} h3{font-size:18px}
 .aifile-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
 .aifile-list li{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 10px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-ctl)}
 .aifile-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+
+/* ======================================================================
+   Rörelse och finish – allt mjukt, men aldrig på bekostnad av tydlighet.
+   Gäller bara när telefonen inte bett om mindre rörelse. Här sätts inga
+   färger eller mått, bara hur saker tonar in, trycks ned och rullar. */
+html{scroll-behavior:smooth}
+*{-webkit-tap-highlight-color:transparent}
+.btn,.tab,.userchip,.cell,.dayrow,.aifile-del{touch-action:manipulation}
+/* Mjukare knappar och kort – övergång på det som faktiskt ändras vid hover. */
+.btn{transition:background-color .14s ease, border-color .14s ease, color .14s ease, transform .06s ease, box-shadow .14s ease}
+.userchip{transition:background-color .14s ease, border-color .14s ease}
+.tab{transition:color .14s ease, background-color .14s ease}
+.aifile-list li{transition:background-color .14s ease, border-color .14s ease}
+input,select,textarea{transition:border-color .14s ease, box-shadow .14s ease, background-color .14s ease}
+
+@media (prefers-reduced-motion: no-preference){
+  /* Vyn tonar in när man byter flik. */
+  .view--enter{animation:viewIn .22s cubic-bezier(.22,.61,.36,1) both}
+  @keyframes viewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* Dialogen tonar upp bakom en bakgrund som klarnar in. */
+  .ovl{animation:ovlIn .16s ease both}
+  .modal{animation:modalIn .2s cubic-bezier(.22,.61,.36,1) both}
+  @keyframes ovlIn{from{opacity:0}to{opacity:1}}
+  @keyframes modalIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+
+  /* Notisen glider upp underifrån. */
+  .toast{animation:toastIn .22s cubic-bezier(.22,.61,.36,1) both}
+  @keyframes toastIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translateX(-50%)}}
+
+  /* Tryck ger ett litet svar i handen. */
+  .btn:active:not(:disabled){transform:translateY(1px)}
+  .btn.primary:hover:not(:disabled){box-shadow:0 4px 14px rgba(43,92,142,.28)}
+  .aifile-list li:hover{border-color:var(--line-2)}
+
+  /* Startskärmen andas i stället för att stå still. */
+  .skel{animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.55}50%{opacity:1}}
+}
+
+/* Rullning: tunnare, dämpad list i stället för systemets grå. */
+.tblwrap,.modal{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+.tblwrap::-webkit-scrollbar,.modal::-webkit-scrollbar{width:10px;height:10px}
+.tblwrap::-webkit-scrollbar-thumb,.modal::-webkit-scrollbar-thumb{
+  background:var(--line-2);border-radius:99px;border:3px solid transparent;background-clip:content-box}
+.tblwrap::-webkit-scrollbar-thumb:hover,.modal::-webkit-scrollbar-thumb:hover{background:var(--muted);background-clip:content-box}
+.tblwrap,.tabs{-webkit-overflow-scrolling:touch}
+
+/* Rörlig bild och dialog ska inte animeras vid utskrift. */
+@media print{ .view--enter,.ovl,.modal,.toast{animation:none !important} html{scroll-behavior:auto} }

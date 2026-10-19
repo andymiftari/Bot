@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.11.0";
+export const APP_VERSION = "2.12.0";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -4169,6 +4169,7 @@ function confirmTwice(key){
 }
 
 /* ============================ render ============================ */
+let lastViewTab=null;
 function render(){
   if(!configured){ app.innerHTML=viewSetup()+supportBar(); return; }
   if(S.phase==="boot"){ app.innerHTML='<div class="skel">Startar '+esc(cfg("appName"))+'…</div>'; return; }
@@ -4197,7 +4198,10 @@ function render(){
      eller Firestores egen bekräftelse av en sparning. */
   const fokus=document.activeElement && app.contains(document.activeElement) ? document.activeElement : null;
   const fokusId=fokus && fokus.id, selS=fokus && fokus.selectionStart, selE=fokus && fokus.selectionEnd;
-  app.innerHTML=topbar()+body+supportBar();
+  /* Mjuk övergång bara när man faktiskt byter flik – inte vid varje
+     bakgrundssparning, så att det man skriver aldrig hoppar till. */
+  const swap = S.tab!==lastViewTab; lastViewTab=S.tab;
+  app.innerHTML=topbar()+'<div class="view'+(swap?' view--enter':'')+'">'+body+'</div>'+supportBar();
   if(dirty.size){
     dirty.forEach(function(v, id){
       const el=document.getElementById(id);
