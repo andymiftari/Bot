@@ -10,65 +10,18 @@
      {"result":{...}}   den färdiga kalkylen
      {"error":"..."}    om något gick fel
 
-   Kräver miljövariabeln ANTHROPIC_API_KEY (Cloudflare: Settings → Variables
-   and Secrets). FIREBASE_PROJECT_ID kan sättas om projektet byter namn. */
+   Två sätt att köra den (Cloudflare: Settings → Variables and Secrets):
+     GEMINI_API_KEY     gratis via Google AI Studio – söker priser med Google
+     ANTHROPIC_API_KEY  Claude, kostar per kalkyl men räknar noggrannare
+   Finns båda används Claude. FIREBASE_PROJECT_ID kan sättas om projektet
+   byter namn. */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { DEFAULT_PROJECT, verifyFirebaseToken, roleOf } from "../../lib/auth.js";
+import { geminiJson, GeminiError } from "../../lib/gemini.js";
 
-const DEFAULT_PROJECT = "tidsrapportering-ellingesmide";
 const MODEL = "claude-opus-5-5";
 const MAX_CONTINUATIONS = 6;
-
-/* ----------------------------- inloggning ----------------------------- */
-
-const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
-let jwksCache = { keys: null, until: 0 };
-
-function b64urlToBytes(s) {
-  const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
-  return Uint8Array.from(b, c => c.charCodeAt(0));
-}
-const b64urlJson = s => JSON.parse(new TextDecoder().decode(b64urlToBytes(s)));
-
-async function googleKeys() {
-  if (jwksCache.keys && Date.now() < jwksCache.until) return jwksCache.keys;
-  const res = await fetch(JWKS_URL);
-  if (!res.ok) throw new Error("Kunde inte hämta Googles nycklar.");
-  const body = await res.json();
-  const age = /max-age=(\d+)/.exec(res.headers.get("cache-control") || "");
-  jwksCache = { keys: body.keys || [], until: Date.now() + (age ? +age[1] * 1000 : 3600e3) };
-  return jwksCache.keys;
-}
-
-/* Kontrollerar Firebase-inloggningens ID-token och returnerar användarens uid. */
-async function verifyFirebaseToken(token, projectId) {
-  const parts = String(token || "").split(".");
-  if (parts.length !== 3) throw new Error("Ogiltig inloggning.");
-  const header = b64urlJson(parts[0]);
-  const claims = b64urlJson(parts[1]);
-  if (header.alg !== "RS256") throw new Error("Ogiltig inloggning.");
-  const jwk = (await googleKeys()).find(k => k.kid === header.kid);
-  if (!jwk) throw new Error("Inloggningen har gått ut. Logga in igen.");
-  const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-  const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64urlToBytes(parts[2]),
-    new TextEncoder().encode(parts[0] + "." + parts[1]));
-  const now = Math.floor(Date.now() / 1000);
-  if (!ok || claims.aud !== projectId || claims.iss !== "https://securetoken.google.com/" + projectId
-      || !claims.sub || claims.exp <= now || claims.iat > now + 300) {
-    throw new Error("Inloggningen har gått ut. Logga in igen.");
-  }
-  return claims.sub;
-}
-
-/* Läser användarens roll i Firestore med användarens egen inloggning. */
-async function roleOf(uid, token, projectId) {
-  const url = "https://firestore.googleapis.com/v1/projects/" + projectId
-    + "/databases/(default)/documents/employees/" + encodeURIComponent(uid);
-  const res = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-  if (!res.ok) return "";
-  const doc = await res.json();
-  return (((doc.fields || {}).role || {}).stringValue) || "";
-}
 
 /* ------------------------------ kalkylen ------------------------------ */
 
@@ -140,6 +93,77 @@ function firmText(f) {
   ].join("\n");
 }
 
+/* ------------------------------- Gemini -------------------------------- */
+
+const JSON_SHAPE = `{"summary":"","confidence":"låg|medel|hög","customer":{"name":"","contact":"","address":"","email":"","phone":""},"title":"","intro":"","work":[{"desc":"","hours":0,"price":0}],"material":[{"desc":"","qty":0,"unit":"st","cost":0,"markup":0,"source":"","estimated":false}],"travel":[{"desc":"","mil":0,"price":0}],"assumptions":[""],"questions":[""],"risks":[""],"sanity":"","mail_text":""}`;
+
+function fieldNotes(props, prefix) {
+  return Object.keys(props).flatMap(k => {
+    const p = props[k], name = prefix + k;
+    const own = p.description ? ["- " + name + ": " + p.description] : [];
+    const inner = p.type === "object" ? fieldNotes(p.properties, name + ".")
+      : (p.type === "array" && p.items && p.items.type === "object") ? fieldNotes(p.items.properties, name + "[].") : [];
+    return own.concat(inner);
+  });
+}
+
+const JSON_RULE = "- När du är klar: svara med enbart ett JSON-objekt med exakt den här formen (inga andra fält, ingen text före eller efter):\n"
+  + JSON_SHAPE + "\n\nFälten:\n" + fieldNotes(SAVE_TOOL.input_schema.properties, "").join("\n")
+  + "\n- confidence är ett av låg, medel, hög. Belopp och antal är tal utan enhet och utan mellanslag.";
+const SYSTEM_GEMINI = SYSTEM.replace(
+  "- När du är klar: anropa verktyget spara_kalkyl exakt en gång med hela kalkylen. Skriv ingen annan slutsammanfattning.", JSON_RULE);
+
+const str = v => (v == null ? "" : String(v)).trim();
+const num = v => { const n = typeof v === "number" ? v : parseFloat(String(v || "").replace(/\s/g, "").replace(",", ".")); return isFinite(n) ? n : 0; };
+const strs = a => (Array.isArray(a) ? a : []).map(str).filter(Boolean);
+
+/* Gemini följer formen ungefär – den här ser till att appen får exakt den. */
+function normalize(r) {
+  const c = r.customer || {};
+  return {
+    summary: str(r.summary),
+    confidence: ["låg", "medel", "hög"].includes(str(r.confidence)) ? str(r.confidence) : "låg",
+    customer: { name: str(c.name), contact: str(c.contact), address: str(c.address), email: str(c.email), phone: str(c.phone) },
+    title: str(r.title), intro: str(r.intro),
+    work: (Array.isArray(r.work) ? r.work : []).map(w => ({ desc: str(w.desc), hours: num(w.hours), price: num(w.price) })).filter(w => w.desc || w.hours),
+    material: (Array.isArray(r.material) ? r.material : []).map(m => ({
+      desc: str(m.desc), qty: num(m.qty), unit: str(m.unit) || "st", cost: num(m.cost), markup: num(m.markup),
+      source: str(m.source), estimated: m.estimated === true || m.estimated === "true" })).filter(m => m.desc || m.qty),
+    travel: (Array.isArray(r.travel) ? r.travel : []).map(t => ({ desc: str(t.desc), mil: num(t.mil), price: num(t.price) })).filter(t => t.desc || t.mil),
+    assumptions: strs(r.assumptions), questions: strs(r.questions).slice(0, 6), risks: strs(r.risks),
+    sanity: str(r.sanity), mail_text: str(r.mail_text)
+  };
+}
+
+async function runGemini(env, userText, send) {
+  const onModel = m => send({ status: "Räknar med " + m + " och söker priser med Google …" });
+  let res;
+  try {
+    res = await geminiJson(env, { system: SYSTEM_GEMINI, parts: [{ text: userText }], search: true, temperature: 0.3, maxTokens: 32768 }, onModel);
+  } catch (e) {
+    /* Googlesökningen har en egen kvot – räkna utan den hellre än inte alls. */
+    if (!(e instanceof GeminiError) || e.status === 503) throw e;
+    send({ status: "Prissökningen är inte tillgänglig just nu – räknar med uppskattade priser …" });
+    res = await geminiJson(env, { system: SYSTEM_GEMINI + "\n\nWebbsökning är inte tillgänglig: uppskatta alla priser och sätt estimated=true.",
+      parts: [{ text: userText }], temperature: 0.3, maxTokens: 32768 });
+  }
+  if (res.queries.length) send({ status: "Sökte: " + res.queries.slice(0, 4).join(" · ") });
+  let r = res.json;
+  if (!r) {
+    if (!res.text) throw new Error("AI:n gav inget svar" + (res.finish ? " (" + res.finish + ")" : "") + ". Försök igen.");
+    send({ status: "Ställer upp raderna …" });
+    const fix = await geminiJson(env, { system: JSON_RULE.replace(/^- /, ""), temperature: 0,
+      parts: [{ text: "Gör om kalkylen nedan till JSON-objektet. Ändra inga siffror och hitta inte på något.\n\n" + res.text }] });
+    r = fix.json;
+  }
+  if (!r) throw new Error("AI:n svarade i fel form. Försök igen.");
+  const out = normalize(r);
+  /* Länkarna Google faktiskt använde, så att priserna går att kontrollera. */
+  if (res.sources.length) out.assumptions.push("Källor från prissökningen: " + res.sources.slice(0, 8).map(s => s.title || s.uri).join(", ") + ".");
+  out.assumptions.push("Räknad med Google Gemini (" + res.model + ", gratisnivå). Kontrollera priserna innan offerten skickas.");
+  return out;
+}
+
 /* ------------------------------- anropet ------------------------------- */
 
 export async function onRequestPost({ request, env, waitUntil }) {
@@ -148,7 +172,8 @@ export async function onRequestPost({ request, env, waitUntil }) {
     status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
   });
 
-  if (!env.ANTHROPIC_API_KEY) return json(503, { error: "AI-kalkylen är inte påslagen: API-nyckeln saknas i Cloudflare." });
+  if (!env.ANTHROPIC_API_KEY && !env.GEMINI_API_KEY)
+    return json(503, { error: "AI-kalkylen är inte påslagen: lägg in GEMINI_API_KEY (gratis) i Cloudflare." });
 
   const token = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   try {
@@ -174,13 +199,13 @@ export async function onRequestPost({ request, env, waitUntil }) {
 
   const work = (async () => {
     try {
-      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-      const messages = [{
-        role: "user",
-        content: "Dagens datum: " + today + "\n\n" + firmText(firm)
-          + "\n\nKundens förfrågan:\n<forfragan>\n" + mail + "\n</forfragan>"
-      }];
+      const userText = "Dagens datum: " + today + "\n\n" + firmText(firm)
+        + "\n\nKundens förfrågan:\n<forfragan>\n" + mail + "\n</forfragan>";
       send({ status: "Läser förfrågan …" });
+      if (!env.ANTHROPIC_API_KEY) { send({ result: await runGemini(env, userText, send) }); return; }
+
+      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+      const messages = [{ role: "user", content: userText }];
 
       let result = null;
       for (let round = 0; round <= MAX_CONTINUATIONS && !result; round++) {
@@ -220,7 +245,12 @@ export async function onRequestPost({ request, env, waitUntil }) {
       send({ result });
     } catch (e) {
       let msg = "Något gick fel i AI-kalkylen. Försök igen om en stund.";
-      if (e instanceof Anthropic.AuthenticationError) msg = "API-nyckeln i Cloudflare fungerar inte.";
+      if (e instanceof GeminiError) {
+        msg = e.status === 429 ? "Dagens gratiskvot hos Google är slut. Försök igen i morgon eller om en stund."
+          : e.status === 400 || e.status === 403 ? "Gemini-nyckeln i Cloudflare fungerar inte (" + e.message + ")."
+          : "Google Gemini svarade med fel " + (e.status || "") + ". Försök igen.";
+      }
+      else if (e instanceof Anthropic.AuthenticationError) msg = "API-nyckeln i Cloudflare fungerar inte.";
       else if (e instanceof Anthropic.RateLimitError) msg = "AI-tjänsten är upptagen just nu. Försök igen om en minut.";
       else if (e instanceof Anthropic.APIError) msg = "AI-tjänsten svarade med fel " + (e.status || "") + ". Försök igen.";
       else if (e && e.message) msg = e.message;

@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.7.0";
+export const APP_VERSION = "2.7.1";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -2097,6 +2097,36 @@ function grabFrame(){
   ctx.drawImage(vid, x, y, w, h, 0, 0, cv.width, cv.height);
   return cv;
 }
+/* Hela kamerabilden, för AI-avläsningen: den behöver se etiketter som TRIP
+   och ODO runt siffrorna, inte bara bandet i ramen. */
+function grabWide(){
+  const vid=document.getElementById("sc-video");
+  if(!vid || !vid.videoWidth) return "";
+  const k=Math.min(1, 1280/Math.max(vid.videoWidth, vid.videoHeight));
+  const cv=document.createElement("canvas");
+  cv.width=Math.round(vid.videoWidth*k); cv.height=Math.round(vid.videoHeight*k);
+  cv.getContext("2d").drawImage(vid,0,0,cv.width,cv.height);
+  try{ return cv.toDataURL("image/jpeg",0.85); }catch(e){ return ""; }
+}
+/* AI-avläsning via /api/miltal (Google Gemini, gratisnivå). Ett andra öga –
+   svarar servern inte, eller är funktionen avstängd, används bara
+   telefonens egen avläsning. */
+async function aiMeter(image, scan){
+  if(!image || S.aiMeterOff || !auth.currentUser) return null;
+  const v=vehById(scan.vehId)||{};
+  const ctl=new AbortController(), timer=setTimeout(()=>ctl.abort(), 25000);
+  try{
+    const token=await auth.currentUser.getIdToken();
+    const res=await fetch("api/miltal", {method:"POST", signal:ctl.signal,
+      headers:{"content-type":"application/json", authorization:"Bearer "+token},
+      body:JSON.stringify({image:image, context:{model:v.name||"", regnr:v.regnr||"", phase:scan.phase,
+        startKm:scan.phase==="slut" ? (+(openTripHere(scan.vehId)||{}).startKm||0) : 0, lastKm:vehLastKm(scan.vehId)}})});
+    if(res.status===503 || res.status===404){ S.aiMeterOff=true; return null; }
+    if(!res.ok) return null;
+    return await res.json();
+  }catch(e){ console.warn("AI-avläsning:", (e&&e.message)||e); return null; }
+  finally{ clearTimeout(timer); }
+}
 function boostContrast(cv){
   const ctx=cv.getContext("2d");
   const img=ctx.getImageData(0,0,cv.width,cv.height), d=img.data;
@@ -4111,16 +4141,40 @@ document.addEventListener("click", async function(ev){
     let photo=""; try{ photo=small.toDataURL("image/jpeg",0.5); }catch(e){}
     if(photo.length>60000) photo="";       /* orimligt stort – spara hellre inget */
     if(S.scan){ S.scan.photo=photo; }
+    const wide=S.aiMeterOff?"":grabWide();
     stopScan();
     showShot(photo||small.toDataURL("image/png"));
     if(hint) hint.textContent="Läser av siffrorna…";
     try{
       const scan=S.scan;
       const before=(document.getElementById("sc-km")||{}).value||"";
-      const res=await readMeter(cv, scan);
+      /* telefonens avläsning och AI:n arbetar samtidigt */
+      const aiP=aiMeter(wide, scan);
+      let res;
+      try{ res=await readMeter(cv, scan); }
+      catch(e){ res={value:"", hint:"", failed:e}; }
       if(S.scan!==scan) return;            /* dialogen har stängts eller bytts under tiden */
+      if(wide && !S.aiMeterOff && hint) hint.textContent=(res.value?"Avläst "+mfm.format(+res.value)+" km. ":"")+"AI:n kontrollerar fotot…";
+      const ai=await aiP;
+      if(S.scan!==scan) return;
       const box=document.getElementById("sc-km");
       if(box && box.value!==before){ if(hint) hint.textContent="Du har skrivit in ett värde – det används."; updateCalc(); return; }
+      /* AI:n ser hela panelen och vet vilket tal som är totalmätaren, så den
+         går före när den är säker. Är den osäker visas dess råd till föraren. */
+      if(ai && ai.km && ai.confidence!=="låg"){
+        const agree=res.value && +res.value===ai.km;
+        if(box){ box.value=String(ai.km); scan.km=String(ai.km); }
+        if(hint) hint.textContent=(ai.message||("Avläst: "+mfm.format(ai.km)+" km. Stämmer det med mätaren?"))
+          +(agree?" Telefonens avläsning ger samma värde.":"");
+        updateCalc(); return;
+      }
+      if(res.failed && !(ai && (ai.km || ai.message))) throw res.failed;
+      if(!res.value && ai && ai.km){
+        if(box){ box.value=String(ai.km); scan.km=String(ai.km); }
+        if(hint) hint.textContent=(ai.message||"")+" Osäker avläsning – kontrollera varje siffra mot mätaren.";
+        updateCalc(); return;
+      }
+      if(!res.value && ai && ai.message){ if(hint) hint.textContent=ai.message; updateCalc(); return; }
       if(res.value){
         if(box){ box.value=res.value; scan.km=res.value; }
         if(hint) hint.textContent=res.hint;

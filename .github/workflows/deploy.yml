@@ -21,6 +21,7 @@ on:
     paths:
       - "timmar-app/**"
       - "functions/**"
+      - "lib/**"
       - "package.json"
       - "firestore.rules"
       - "firebase.json"
