@@ -45,6 +45,7 @@ Regler:
 - Använd firmans påslag på material om inget särskilt talar emot det.
 - Kunden ser aldrig inköpspris eller påslag. Beskrivningen av arbetet (intro) och mejlet får därför aldrig nämna dem.
 - Är förfrågan för otydlig för att räkna: räkna ändå på det mest troliga utförandet, sätt confidence till "låg", och lägg tyngden på frågorna till kunden.
+- Får du FIRMANS KUNSKAP gäller den före allt annat: priser i firmans egen prislista används i stället för webbpriser (skriv "Egen prislista" som källa och estimated=false), tidsnormerna används för timmarna, och de fasta reglerna följs alltid. De lärda exemplen visar hur firman faktiskt räknar liknande jobb: lägg dig på samma nivå för timmar, påslag och resor. Där ett exempel säger att AI:n först räknade fel, eller där utfallet i projektet blev ett annat, rätta åt samma håll. Skriv i sanity vilket exempel du jämfört med och hur din kalkyl förhåller sig till det.
 - När du är klar: anropa verktyget spara_kalkyl exakt en gång med hela kalkylen. Skriv ingen annan slutsammanfattning.`;
 
 const STR = { type: "string" };
@@ -190,6 +191,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
   if (!mail) return json(400, { error: "Klistra in kundens förfrågan först." });
   const firm = body.firm && typeof body.firm === "object" ? body.firm : {};
   const today = String(body.today || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const knowledge = String(body.knowledge || "").trim().slice(0, 40000);
 
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
@@ -200,6 +202,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
   const work = (async () => {
     try {
       const userText = "Dagens datum: " + today + "\n\n" + firmText(firm)
+        + (knowledge ? "\n\nFIRMANS KUNSKAP (inlärd av firman själv):\n<kunskap>\n" + knowledge + "\n</kunskap>" : "")
         + "\n\nKundens förfrågan:\n<forfragan>\n" + mail + "\n</forfragan>";
       send({ status: "Läser förfrågan …" });
       if (!env.ANTHROPIC_API_KEY) { send({ result: await runGemini(env, userText, send) }); return; }

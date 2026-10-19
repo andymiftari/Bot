@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.7.1";
+export const APP_VERSION = "2.8.0";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -3315,6 +3315,10 @@ const numOut = n => (+n||0) ? String(r2(n)).replace(".",",") : "";
 async function loadOffers(){
   S.offers=(await Store.list("offers")).sort((a,b)=>String(b.nr||"").localeCompare(String(a.nr||"")));
   try{ S.firm=(await Store.get("settings/offert"))||{}; }catch(e){ S.firm={}; }
+  try{ S.aiKnow=Object.assign({prices:[], norms:[], rules:""}, (await Store.get("settings/aikunskap"))||{}); }
+  catch(e){ S.aiKnow={prices:[], norms:[], rules:""}; }
+  try{ S.aiExamples=(await Store.list("aiexempel")).sort((a,b)=>String(b.at).localeCompare(String(a.at))); }
+  catch(e){ S.aiExamples=[]; }
 }
 function nextOfferNr(){
   const y=String(new Date().getFullYear());
@@ -3386,6 +3390,7 @@ function parseCustomerMail(text){
 }
 
 function viewKalkyl(){
+  if(S.offSel==="learn") return viewAiLearn();
   if(S.offSel) return viewOffer();
   const f=firm(), list=S.offers||[];
   const saknas=!f.orgnr||!f.bankgiro;
@@ -3400,6 +3405,7 @@ function viewKalkyl(){
   return '<div class="bar"><span class="note">Klistra in kundens mejl, fyll i arbete, material och resor – appen räknar '
     + 'fram offerten med moms och gör en PDF och en färdig mejltext.</span>'
     + '<button class="btn primary" style="margin-left:auto" data-act="offnew">Ny offert</button>'
+    + '<button class="btn" data-act="offlearn">Lär upp AI:n</button>'
     + '<button class="btn" data-act="offfirm">Firmauppgifter</button></div>'
     + (saknas?'<div class="panel" style="padding:12px 14px;margin-bottom:14px"><b>Fyll i firmauppgifterna först.</b> '
       + '<span class="note">Organisationsnummer, bankgiro, adress och telefon står längst ner på varje offert. '
@@ -3447,7 +3453,8 @@ async function runAiKalkyl(o){
   const res=await fetch("api/kalkyl", {method:"POST",
     headers:{"content-type":"application/json", authorization:"Bearer "+token},
     body:JSON.stringify({mail:o.mail, today:dkey(new Date()), firm:{name:f.name, address:f.address, zip:f.zip, city:f.city,
-      workshop:f.workshop, rate:f.rate, markup:f.markup, milPrice:f.milPrice, validDays:f.validDays, payTerms:f.payTerms, aiHints:f.aiHints}})});
+      workshop:f.workshop, rate:f.rate, markup:f.markup, milPrice:f.milPrice, validDays:f.validDays, payTerms:f.payTerms, aiHints:f.aiHints},
+      knowledge:knowledgeText(o.mail)})});
   const ct=res.headers.get("content-type")||"";
   if(!res.ok || !/ndjson/.test(ct)){
     let msg="AI-kalkylen svarade inte ("+res.status+").";
@@ -3488,7 +3495,9 @@ function applyAiKalkyl(o, r){
   (r.material||[]).forEach(m=>rows.push({kind:"material", desc:m.desc||"", qty:+m.qty||0, unit:m.unit||"st", cost:+m.cost||0, markup:+m.markup||0}));
   (r.travel||[]).forEach(t=>rows.push({kind:"resa", desc:t.desc||"", qty:+t.mil||0, unit:"mil", price:+t.price||0}));
   if(rows.length) o.rows=rows;
-  o.ai={summary:r.summary||"", confidence:r.confidence||"", sanity:r.sanity||"",
+  const first=offerCalc(o).sums;
+  o.ai={orig:{net:first.net, hours:first.hours, matCost:first.matCost||0},
+    summary:r.summary||"", confidence:r.confidence||"", sanity:r.sanity||"",
     assumptions:r.assumptions||[], questions:r.questions||[], risks:r.risks||[],
     sources:(r.material||[]).map(m=>({desc:m.desc||"", source:m.source||"", estimated:!!m.estimated})),
     at:new Date().toLocaleString("sv-SE",{dateStyle:"short",timeStyle:"short"})};
@@ -3552,6 +3561,7 @@ function viewOffer(){
     + fld("k-ref","Vår referens",o.ref)
     + '</div></div></div>'
     + aiPanel(o)
+    + learnPanel(o)
     + sections
     + '<div class="kpis" style="margin-bottom:6px">'
     + '<div class="kpi"><span class="eyebrow">Summa exkl. moms</span><div class="v" id="k-net"></div></div>'
@@ -3662,8 +3672,200 @@ function firmModal(err){
     + '<div class="mf"><button class="btn" data-act="close">Avbryt</button><button class="btn primary" data-act="offfirmsave">Spara</button></div>');
 }
 
+/* ============================ lär upp AI-kalkylen ============================ */
+/* Tre sorters kunskap som följer med varje AI-kalkyl:
+   1. firmans egen prislista – går före priser från webben,
+   2. tidsnormer – hur lång tid moment brukar ta i verkstaden,
+   3. lärda exempel – färdiga offerter med det AI:n föreslog, det som blev
+      rätt, utfallet i projektet och en kommentar om vad som var fel.
+   Prislista och normer ligger i settings/aikunskap, exemplen i aiexempel. */
+const aiKnow = () => S.aiKnow || {prices:[], norms:[], rules:""};
+const kn = v => nf.format(r2(v));
+function learnPanel(o){
+  if(!o.id) return "";
+  const ex=(S.aiExamples||[]).find(x=>x.offerId===o.id);
+  return '<div class="panel" style="padding:14px;margin-bottom:14px"><h3 style="margin-bottom:4px">Lär AI:n av den här offerten</h3>'
+    + '<p class="note" style="margin:0 0 8px">Spara offerten som lärdom när raderna stämmer. Nästa kalkyl på ett liknande jobb räknas då som du räknade här'
+    + (o.ai&&o.ai.orig?' – och AI:n får se vad den själv föreslog ('+kn(o.ai.orig.hours)+' h, '+kr(o.ai.orig.net)+')':'')+'.</p>'
+    + '<label class="fld"><span class="eyebrow">Vad var fel, eller vad ska AI:n tänka på nästa gång?</span>'
+    + '<textarea id="k-learn" rows="3" placeholder="T.ex. Montering tar alltid en hel dag för två man. Rostfritt köper vi för ca 95 kr/kg.">'+esc(ex?ex.comment:"")+'</textarea></label>'
+    + '<div class="bar" style="margin:8px 0 0"><button class="btn sm primary" data-act="offlearnsave">'+(ex?"Uppdatera lärdomen":"Spara som lärdom")+'</button>'
+    + (ex?'<span class="note">Sparad '+esc(String(ex.at).slice(0,10))+'</span>':'')+'</div></div>';
+}
+/* Utfallet i projektet som skapades från offerten, om det finns något. */
+function offerOutcome(offerId){
+  const p=(S.projects||[]).find(x=>((x.quote||{}).offerId)===offerId);
+  if(!p) return null;
+  const a=projActual(p);
+  if(!(a.hours||a.total)) return null;
+  return {project:p.name, status:pStatus(p), hours:r2(a.hours), material:r2(a.parts.material), total:r2(a.total)};
+}
+function exampleFrom(o, comment){
+  const c=offerCalc(o);
+  return {id:o.id, offerId:o.id, nr:o.nr||"", title:o.title||"", status:o.status||"",
+    mail:String(o.mail||"").slice(0,1500),
+    rows:c.rows.map(r=>({kind:r.kind, desc:r.desc||"", qty:r2(r.qty), unit:r.unit||"",
+      price:r.kind==="material"?0:r2(r.unitPrice), cost:r.kind==="material"?r2(r.cost):0, markup:r.kind==="material"?r2(r.markup):0})),
+    net:c.sums.net, hours:c.sums.hours, matCost:c.sums.matCost||0,
+    aiOrig:(o.ai&&o.ai.orig)||null, outcome:offerOutcome(o.id),
+    comment:String(comment||"").trim().slice(0,1500), at:new Date().toISOString(), byName:S.me?S.me.name:""};
+}
+const learnWords = t => String(t||"").toLowerCase().match(/[a-zåäö0-9]{4,}/g) || [];
+/* De exempel som liknar förfrågan mest, och annars de senaste. */
+function pickExamples(mail, n){
+  const want={}; learnWords(mail).forEach(w=>{ want[w]=1; });
+  return (S.aiExamples||[]).map(function(x, i){
+    const seen={}; let score=0;
+    learnWords(x.title+" "+x.mail+" "+x.comment).forEach(w=>{ if(want[w] && !seen[w]){ seen[w]=1; score++; } });
+    return {x:x, score:score+(x.status==="accepterad"?0.5:0), i:i};
+  }).sort((a,b)=>b.score-a.score || a.i-b.i).slice(0,n).map(e=>e.x);
+}
+function exampleText(x){
+  const kind=k=>x.rows.filter(r=>r.kind===k);
+  const line=r=>r.kind==="material"
+    ? r.desc+" "+kn(r.qty)+" "+r.unit+" à "+kn(r.cost)+" kr inköp + "+kn(r.markup)+" %"
+    : r.desc+" "+kn(r.qty)+" "+r.unit+" à "+kn(r.price)+" kr";
+  const out=["### Offert "+x.nr+": "+(x.title||"utan rubrik")+(x.status?" ("+(OFFER_STATUS[x.status]||x.status).toLowerCase()+")":"")];
+  if(x.mail) out.push("Förfrågan (utdrag): "+x.mail.replace(/\s+/g," ").slice(0,700));
+  [["arbete","Arbete"],["material","Material"],["resa","Resor"]].forEach(function(k){
+    const rs=kind(k[0]); if(rs.length) out.push(k[1]+": "+rs.map(line).join("; "));
+  });
+  out.push("Slutlig offert: "+kn(x.hours)+" h arbete, materialinköp "+kn(x.matCost)+" kr, summa "+kn(x.net)+" kr exkl. moms.");
+  if(x.aiOrig) out.push("AI:n föreslog först "+kn(x.aiOrig.hours)+" h och "+kn(x.aiOrig.net)+" kr – raderna ovan är det rättade.");
+  if(x.outcome) out.push("Utfall i projektet "+x.outcome.project+": "+kn(x.outcome.hours)+" h, material "+kn(x.outcome.material)+" kr, totalt "+kn(x.outcome.total)+" kr"+(x.outcome.status!=="avslutad"?" (pågår fortfarande)":"")+".");
+  if(x.comment) out.push("Kommentar från firman: "+x.comment);
+  return out.join("\n");
+}
+/* Allt firman lärt AI:n, som en text som följer med förfrågan. */
+function knowledgeText(mail){
+  const k=aiKnow(), parts=[];
+  const prices=(k.prices||[]).filter(p=>p.name && +p.cost);
+  if(prices.length) parts.push("## Egen prislista (inköpspris exkl. moms – går före priser från webben)\n"
+    + prices.slice(0,300).map(p=>"- "+p.name+": "+kn(p.cost)+" kr/"+(p.unit||"st")+(p.note?" ("+p.note+")":"")).join("\n"));
+  const norms=(k.norms||[]).filter(n=>n.task && +n.hours);
+  if(norms.length) parts.push("## Tidsnormer i verkstaden (går före din egen bedömning)\n"
+    + norms.slice(0,150).map(n=>"- "+n.task+": "+kn(n.hours)+" h per "+(n.unit||"st")).join("\n"));
+  if(String(k.rules||"").trim()) parts.push("## Fasta regler\n"+String(k.rules).trim());
+  const ex=pickExamples(mail, 6);
+  if(ex.length) parts.push("## Lärda exempel – så har firman räknat liknande jobb\n"+ex.map(exampleText).join("\n\n"));
+  return parts.join("\n\n").slice(0,40000);
+}
+function learnRows(list, cols, pre){
+  return list.map(function(r, i){
+    return '<tr>'+cols.map(function(c){
+      return '<td data-l="'+c[1]+'"'+(c[2]?' style="width:'+c[2]+'px"':'')+'><input id="'+pre+i+'-'+c[0]+'" type="text"'
+        + (c[3]?' inputmode="decimal"':'')+' value="'+esc(c[3]?numOut(r[c[0]]):(r[c[0]]||""))+'"'+(c[4]?' placeholder="'+esc(c[4])+'"':'')+'></td>';
+    }).join("")+'<td class="r" style="width:60px"><button class="btn sm ghost" data-act="lrdel" data-t="'+pre+'" data-i="'+i+'" aria-label="Ta bort raden">✕</button></td></tr>';
+  }).join("");
+}
+const PRICE_COLS=[["name","Artikel",0,0,"T.ex. VKR 40x40x3"],["unit","Enhet",70,0,"m"],["cost","Inköpspris kr",110,1,"0"],["note","Leverantör / not",0,0,"T.ex. Tibnor, mars 2026"]];
+const NORM_COLS=[["task","Moment",0,0,"T.ex. Svetsa och slipa räckesstolpe"],["unit","Per",80,0,"st"],["hours","Timmar",90,1,"0"]];
+function viewAiLearn(){
+  const k=aiKnow(), ex=S.aiExamples||[];
+  const exRows=ex.map(function(x){
+    const diff=x.aiOrig&&x.aiOrig.hours?Math.round((x.hours-x.aiOrig.hours)/x.aiOrig.hours*100):null;
+    return '<tr><td class="r">'+esc(x.nr)+'</td><td><b>'+esc(x.title||"—")+'</b>'+(x.comment?'<div class="note">'+esc(x.comment)+'</div>':'')+'</td>'
+      + '<td class="r">'+kn(x.hours)+' h<div class="note">'+esc(kr(x.net))+'</div></td>'
+      + '<td class="r">'+(x.aiOrig?kn(x.aiOrig.hours)+' h'+(diff!==null&&diff!==0?'<div class="note">'+(diff>0?"+":"")+diff+' % efter rättning</div>':''):'<span class="note">–</span>')+'</td>'
+      + '<td class="r">'+(x.outcome?kn(x.outcome.hours)+' h<div class="note">'+esc(x.outcome.status==="avslutad"?"avslutat":"pågår")+'</div>':'<span class="note">–</span>')+'</td>'
+      + '<td class="r" style="white-space:nowrap"><button class="btn sm ghost" data-act="lrexdel" data-x="'+esc(x.id)+'">Ta bort</button></td></tr>';
+  }).join("");
+  return '<div id="learn">'
+    + '<div class="bar"><button class="btn sm ghost" data-act="offback">‹ Alla offerter</button>'
+    + '<div class="per">Lär upp AI-kalkylen</div>'
+    + '<button class="btn primary" style="margin-left:auto" data-act="lrsave">Spara</button></div>'
+    + '<p class="note" style="margin:0 0 14px">Allt här följer med varje AI-kalkyl. Ju mer du lägger in, desto närmare hamnar AI:n hur ni själva räknar.</p>'
+    + '<div class="panel" style="margin-bottom:14px"><div class="hd"><div><h3>Egen prislista</h3>'
+    + '<span class="note">Era inköpspriser exkl. moms. AI:n använder dem i stället för att söka på webben.</span></div>'
+    + '<button class="btn sm" style="margin-left:auto" data-act="lradd" data-t="lp">Lägg till rad</button></div>'
+    + ((k.prices||[]).length?'<div class="tblwrap" style="border:0"><table class="tbl kalk"><thead><tr><th>Artikel</th><th>Enhet</th><th>Inköpspris kr</th><th>Leverantör / not</th><th></th></tr></thead><tbody>'
+      + learnRows(k.prices, PRICE_COLS, "lp")+'</tbody></table></div>':'<p class="note" style="padding:10px 14px">Ingen prislista än.</p>')
+    + '<div style="padding:10px 14px 14px"><label class="fld"><span class="eyebrow">Klistra in från Excel: artikel, enhet, pris (och not) – en rad per artikel</span>'
+    + '<textarea id="lp-paste" rows="3" placeholder="VKR 40x40x3&#9;m&#9;55&#9;Tibnor"></textarea></label>'
+    + '<button class="btn sm" style="margin-top:8px" data-act="lrpaste">Lägg till raderna</button></div></div>'
+    + '<div class="panel" style="margin-bottom:14px"><div class="hd"><div><h3>Tidsnormer</h3>'
+    + '<span class="note">Hur lång tid moment brukar ta hos er. AI:n räknar timmar med dem.</span></div>'
+    + '<button class="btn sm" style="margin-left:auto" data-act="lradd" data-t="ln">Lägg till rad</button></div>'
+    + ((k.norms||[]).length?'<div class="tblwrap" style="border:0"><table class="tbl kalk"><thead><tr><th>Moment</th><th>Per</th><th>Timmar</th><th></th></tr></thead><tbody>'
+      + learnRows(k.norms, NORM_COLS, "ln")+'</tbody></table></div>':'<p class="note" style="padding:10px 14px">Inga tidsnormer än. Exempel: Montering av räcke – per meter – 0,75 h.</p>')
+    + '</div>'
+    + '<div class="panel" style="padding:14px;margin-bottom:14px"><h3 style="margin-bottom:8px">Fasta regler</h3>'
+    + '<label class="fld"><span class="eyebrow">Sådant som alltid gäller</span><textarea id="lr-rules" rows="4" '
+    + 'placeholder="T.ex. Vi räknar alltid minst 4 timmar för montering. Förzinkning kostar ca 14 kr/kg och tar två veckor. Lägg 1 timme ritning på allt.">'+esc(k.rules||"")+'</textarea></label></div>'
+    + '<div class="panel"><div class="hd"><div><h3>Lärda exempel</h3>'
+    + '<span class="note">Sparas från en offert med <b>Spara som lärdom</b>. De '+6+' som liknar förfrågan mest följer med varje kalkyl.</span></div></div>'
+    + (ex.length?'<div class="tblwrap" style="border:0"><table class="tbl"><thead><tr><th class="r">Nr</th><th>Offert och kommentar</th><th class="r">Slutlig</th><th class="r">AI:ns förslag</th><th class="r">Utfall</th><th></th></tr></thead><tbody>'
+      + exRows+'</tbody></table></div>':'<p class="note" style="padding:10px 14px">Inga exempel än. Öppna en offert du är nöjd med och tryck på <b>Spara som lärdom</b>.</p>')
+    + '</div></div>';
+}
+/* Läser av formuläret, så att inget man skrivit tappas när vyn ritas om. */
+function learnRead(){
+  const k=aiKnow(); if(!document.getElementById("learn")) return k;
+  const v=id=>{ const e=document.getElementById(id); return e?e.value:null; };
+  const read=(list, cols, pre)=>list.map(function(r, i){
+    const o=Object.assign({}, r);
+    cols.forEach(function(c){ const x=v(pre+i+"-"+c[0]); if(x!==null) o[c[0]]=c[3]?numIn(x):x.trim(); });
+    return o;
+  });
+  k.prices=read(k.prices||[], PRICE_COLS, "lp");
+  k.norms=read(k.norms||[], NORM_COLS, "ln");
+  const r=v("lr-rules"); if(r!==null) k.rules=r;
+  S.aiKnow=k; return k;
+}
+async function handleLearn(act, t){
+  if(act==="offlearn"){ S.off=null; S.offSel="learn"; if(!S.aiKnow) await loadOffers(); render(); window.scrollTo(0,0); return true; }
+  if(act==="offlearnsave"){
+    const o=S.off; if(!o||!o.id){ toast("Spara offerten först."); return true; }
+    offerRead();
+    const comment=(document.getElementById("k-learn")||{}).value||"";
+    if(!(o.rows||[]).some(r=>+r.qty)){ toast("Offerten har inga rader att lära av."); return true; }
+    try{ await loadProjectData(); }catch(e){ console.error(e); }
+    const x=exampleFrom(o, comment);
+    const ok=await guard(function(){ return Store.set("aiexempel/"+x.id, x); }, "Sparad som lärdom. Nästa liknande kalkyl räknas på samma sätt.");
+    if(ok){ S.aiExamples=[x].concat((S.aiExamples||[]).filter(e=>e.id!==x.id)); render(); offerLive(); }
+    return true;
+  }
+  if(S.offSel!=="learn") return false;
+  const k=learnRead();
+  if(act==="lradd"){
+    const list=t.dataset.t==="lp"?(k.prices=k.prices||[]):(k.norms=k.norms||[]);
+    list.push(t.dataset.t==="lp"?{name:"", unit:"", cost:0, note:""}:{task:"", unit:"st", hours:0});
+    render(); const el=document.getElementById(t.dataset.t+(list.length-1)+"-"+(t.dataset.t==="lp"?"name":"task")); if(el) el.focus();
+    return true;
+  }
+  if(act==="lrdel"){ (t.dataset.t==="lp"?k.prices:k.norms).splice(+t.dataset.i,1); render(); return true; }
+  if(act==="lrpaste"){
+    const txt=(document.getElementById("lp-paste")||{}).value||"";
+    let n=0;
+    txt.split(/\r?\n/).forEach(function(line){
+      const c=line.split(/\t|;/).map(x=>x.trim());
+      if(c.length<3 || !c[0]) return;
+      const cost=numIn(c[2]); if(!cost) return;
+      k.prices.push({name:c[0], unit:c[1]||"st", cost:cost, note:c[3]||""}); n++;
+    });
+    render(); toast(n?n+" rader tillagda. Tryck på Spara.":"Hittade inga rader. Varje rad ska ha artikel, enhet och pris, med tabb eller semikolon emellan.");
+    return true;
+  }
+  if(act==="lrsave"){
+    const body={prices:(k.prices||[]).filter(p=>String(p.name||"").trim()), norms:(k.norms||[]).filter(n=>String(n.task||"").trim()),
+      rules:String(k.rules||"").trim(), updatedAt:new Date().toISOString(), updatedBy:S.me?S.me.name:""};
+    const ok=await guard(function(){ return Store.set("settings/aikunskap", body); }, "AI-kunskapen är sparad.");
+    if(ok){ S.aiKnow=body; render(); }
+    return true;
+  }
+  if(act==="lrexdel"){
+    const id=t.dataset.x;
+    if(!confirmTwice("lrexdel"+id)){ toast("Tryck på Ta bort en gång till för att ta bort exemplet."); return true; }
+    const ok=await guard(function(){ return Store.del("aiexempel/"+id); }, "Exemplet är borttaget.");
+    if(ok){ S.aiExamples=(S.aiExamples||[]).filter(x=>x.id!==id); render(); }
+    return true;
+  }
+  return false;
+}
+
 async function handleKalkyl(act, t){
   if(!isAdmin()) return true;
+  if((act==="offlearn"||act==="offlearnsave"||/^lr/.test(act)) && await handleLearn(act, t)) return true;
   if(act==="offnew"){ S.off=newOffer(); S.offSel="new"; render(); offerLive(); window.scrollTo(0,0); return true; }
   if(act==="offopen"){
     const o=(S.offers||[]).find(x=>x.id===t.dataset.o); if(!o) return true;
@@ -3874,7 +4076,7 @@ document.addEventListener("click", async function(ev){
   const act=t.dataset.act;
   dirty.clear();
   if(act==="noop") return;
-  if(/^off/.test(act) && S.tab==="kalkyl" && await handleKalkyl(act, t)) return;
+  if(/^(off|lr)/.test(act) && S.tab==="kalkyl" && await handleKalkyl(act, t)) return;
   if(act==="doupdate"){ location.reload(); return; }
   if(act==="ovl"){ if(ev.target===t) closeModal(); return; }
   if(act==="close"){ closeModal(); return; }

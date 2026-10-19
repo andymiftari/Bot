@@ -84,7 +84,7 @@ service cloud.firestore {
     // kostnadsslag (settings/lists) och firmans offertuppgifter (settings/offert).
     match /settings/{docId} {
       allow read: if signedIn();
-      allow write: if (docId == 'lists' || docId == 'offert') ? isAdmin() : isSupport();
+      allow write: if (docId == 'lists' || docId == 'offert' || docId == 'aikunskap') ? isAdmin() : isSupport();
     }
 
     // Kontonamn -> inloggningsadress. Måste kunna slås upp innan inloggning,
@@ -176,6 +176,11 @@ service cloud.firestore {
 
     // Offerter från kalkylfliken. Bara superadmin.
     match /offers/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Lärda exempel till AI-kalkylen – offerter med kommentarer och utfall.
+    match /aiexempel/{docId} {
       allow read, write: if isAdmin();
     }
 
