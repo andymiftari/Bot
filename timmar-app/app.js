@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.9.0";
+export const APP_VERSION = "2.10.0";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -3319,6 +3319,8 @@ async function loadOffers(){
   catch(e){ S.aiKnow={prices:[], norms:[], rules:""}; }
   try{ S.aiExamples=(await Store.list("aiexempel")).sort((a,b)=>String(b.at).localeCompare(String(a.at))); }
   catch(e){ S.aiExamples=[]; }
+  try{ S.aiFiles=(await Store.list("aifiles")).sort((a,b)=>String(a.at).localeCompare(String(b.at))); }
+  catch(e){ S.aiFiles=[]; }
 }
 function nextOfferNr(){
   const y=String(new Date().getFullYear());
@@ -3450,11 +3452,13 @@ async function runAiKalkyl(o){
   const user=auth.currentUser;
   if(!user) throw new Error("Du är inte inloggad.");
   const token=await user.getIdToken();
+  const att=await aiFilesPayload(o);
+  if(att.skipped.length) toast("För mycket att skicka på en gång – hoppar över: "+att.skipped.join(", "));
   const res=await fetch("api/kalkyl", {method:"POST",
     headers:{"content-type":"application/json", authorization:"Bearer "+token},
     body:JSON.stringify({mail:o.mail, today:dkey(new Date()), firm:{name:f.name, address:f.address, zip:f.zip, city:f.city,
       workshop:f.workshop, rate:f.rate, markup:f.markup, milPrice:f.milPrice, validDays:f.validDays, payTerms:f.payTerms, aiHints:f.aiHints},
-      knowledge:knowledgeText(o.mail)})});
+      knowledge:knowledgeText(o.mail), files:att.files, attachText:att.attachText})});
   const ct=res.headers.get("content-type")||"";
   if(!res.ok || !/ndjson/.test(ct)){
     let msg="AI-kalkylen svarade inte ("+res.status+").";
@@ -3544,7 +3548,9 @@ function viewOffer(){
     + '<div class="bar" style="margin:8px 0 0">'
     + '<button class="btn sm primary" data-act="offai"'+(S.aiBusy?' disabled':'')+'>'+(S.aiBusy?'Räknar …':'Räkna med AI')+'</button>'
     + '<button class="btn sm" data-act="offparse">Hämta kontaktuppgifter ur mejlet</button></div>'
-    + '<p class="note" id="k-ai-status" style="margin-top:6px">'+esc(S.aiStatus||"")+'</p></div>'
+    + '<p class="note" id="k-ai-status" style="margin-top:6px">'+esc(S.aiStatus||"")+'</p>'
+    + filesPanel(o.id?"offer:"+o.id:"offer:", "Bilagor till förfrågan", "Ritningar, foton, PDF och Excel från kunden – AI:n läser dem när du räknar. Syns inte i offerten.")
+    + '</div>'
     + '<div class="panel" style="padding:14px"><h3 style="margin-bottom:8px">Kund</h3><div class="stack">'
     + fld("k-cname","Namn eller företag",cu.name)
     + fld("k-contact","Kontaktperson",cu.contact)
@@ -3748,7 +3754,9 @@ function knowledgeText(mail){
   if(String(k.rules||"").trim()) parts.push("## Fasta regler\n"+String(k.rules).trim());
   const ex=pickExamples(mail, 6);
   if(ex.length) parts.push("## Lärda exempel – så har firman räknat liknande jobb\n"+ex.map(exampleText).join("\n\n"));
-  return parts.join("\n\n").slice(0,40000);
+  const docs=aiFilesFor("learn").filter(f=>f.kind==="text"&&f.text);
+  if(docs.length) parts.push("## Firmans underlag (uppladdade filer)\n"+docs.map(f=>"### "+f.name+"\n"+f.text).join("\n\n"));
+  return parts.join("\n\n").slice(0,80000);
 }
 function learnRows(list, cols, pre){
   return list.map(function(r, i){
@@ -3792,6 +3800,9 @@ function viewAiLearn(){
     + '<div class="panel" style="padding:14px;margin-bottom:14px"><h3 style="margin-bottom:8px">Fasta regler</h3>'
     + '<label class="fld"><span class="eyebrow">Sådant som alltid gäller</span><textarea id="lr-rules" rows="4" '
     + 'placeholder="T.ex. Vi räknar alltid minst 4 timmar för montering. Förzinkning kostar ca 14 kr/kg och tar två veckor. Lägg 1 timme ritning på allt.">'+esc(k.rules||"")+'</textarea></label></div>'
+    + '<div class="panel" style="padding:14px;margin-bottom:14px">'
+    + filesPanel("learn", "Filer AI:n alltid läser", "Leverantörers prislistor, egna kalkylmallar och liknande. Excel och CSV blir text; PDF och bilder läses som de är.")
+    + '</div>'
     + '<div class="panel"><div class="hd"><div><h3>Lärda exempel</h3>'
     + '<span class="note">Sparas från en offert med <b>Spara som lärdom</b>. De '+6+' som liknar förfrågan mest följer med varje kalkyl.</span></div></div>'
     + (ex.length?'<div class="tblwrap" style="border:0"><table class="tbl"><thead><tr><th class="r">Nr</th><th>Offert och kommentar</th><th class="r">Slutlig</th><th class="r">AI:ns förslag</th><th class="r">Utfall</th><th></th></tr></thead><tbody>'
@@ -3824,6 +3835,13 @@ async function handleLearn(act, t){
     const ok=await guard(function(){ return Store.set("aiexempel/"+x.id, x); }, "Sparad som lärdom. Nästa liknande kalkyl räknas på samma sätt.");
     if(ok){ S.aiExamples=[x].concat((S.aiExamples||[]).filter(e=>e.id!==x.id)); render(); offerLive(); }
     return true;
+  }
+  if(act==="lrfiledel"){
+    const f=(S.aiFiles||[]).find(x=>x.id===t.dataset.f); if(!f) return true;
+    if(!confirmTwice("lrfiledel"+f.id)){ toast("Tryck på ✕ en gång till för att ta bort "+f.name+"."); return true; }
+    if(S.off) offerRead(); else learnRead();
+    await guard(function(){ return deleteAiFile(f.id); }, f.name+" är borttagen.");
+    render(); if(S.off) offerLive(); return true;
   }
   if(S.offSel!=="learn") return false;
   const k=learnRead();
@@ -3861,6 +3879,92 @@ async function handleLearn(act, t){
     return true;
   }
   return false;
+}
+
+/* ============================ filer till AI-kalkylen ============================ */
+/* Ritningar, foton, PDF:er och Excel-filer som AI:n läser. Filer på en offert
+   (scope "offer:<id>") följer med när den offerten räknas; filer under Lär upp
+   AI:n (scope "learn") följer med varje kalkyl – prislistor från leverantörer,
+   egna normer och liknande. Excel, CSV och text görs om till text direkt.
+   Bilder och PDF:er sparas som de är, uppdelade i bitar i aifiledata, eftersom
+   ett Firestore-dokument rymmer högst 1 MB. */
+const AIFILE_MAX=8*1024*1024, AICHUNK=900000, AISEND_MAX=14*1024*1024;
+const aiFilesFor = scope => (S.aiFiles||[]).filter(f=>f.scope===scope);
+const fileSize = n => n>1048576 ? (n/1048576).toFixed(1).replace(".",",")+" MB" : Math.max(1,Math.round((n||0)/1024))+" kB";
+async function readAiFile(file){
+  const name=file.name||"fil", type=file.type||"";
+  if(/\.(xlsx|xlsm|xls|ods|csv)$/i.test(name) || /spreadsheet|excel|text\/csv/.test(type)){
+    if(!(await ensureXLSX())) throw new Error("Excel-läsaren kunde inte laddas. Kontrollera nätet och försök igen.");
+    const wb=XLSX.read(await file.arrayBuffer(), {type:"array"});
+    const text=wb.SheetNames.map(n=>"# Blad: "+n+"\n"+XLSX.utils.sheet_to_csv(wb.Sheets[n],{FS:";", blankrows:false})).join("\n\n");
+    return {kind:"text", mime:"text/csv", text:text.slice(0,60000)};
+  }
+  if(/\.(txt|md)$/i.test(name) || /^text\/plain/.test(type)) return {kind:"text", mime:"text/plain", text:(await file.text()).slice(0,60000)};
+  if(/^image\//.test(type)){
+    const url=await shrinkImage(file, 2000, 0.82);
+    return {kind:"inline", mime:"image/jpeg", data:url.split(",")[1]||""};
+  }
+  if(type==="application/pdf" || /\.pdf$/i.test(name)){
+    if(file.size>AIFILE_MAX) throw new Error(name+" är större än 8 MB. Dela upp PDF:en eller skriv ut bara de sidor som behövs.");
+    return {kind:"inline", mime:"application/pdf", data:await blobToB64(file)};
+  }
+  throw new Error(name+": den filtypen kan AI:n inte läsa. Använd PDF, bild, Excel, CSV eller text.");
+}
+async function uploadAiFiles(scope, files){
+  let ok=0;
+  for(const file of files){
+    try{
+      const r=await readAiFile(file);
+      const id=String(Date.now())+"-"+uid();
+      const meta={id:id, scope:scope, name:String(file.name||"fil").slice(0,160), mime:r.mime, kind:r.kind,
+        size:file.size||0, text:r.kind==="text"?r.text:"", chunks:0, at:new Date().toISOString(), byName:S.me?S.me.name:""};
+      if(r.kind==="inline"){
+        const n=Math.ceil(r.data.length/AICHUNK);
+        for(let i=0;i<n;i++) await Store.set("aifiledata/"+id+"__"+i, {id:id, i:i, data:r.data.slice(i*AICHUNK,(i+1)*AICHUNK)});
+        meta.chunks=n; meta.size=Math.round(r.data.length*0.75);
+      }
+      await Store.set("aifiles/"+id, meta);
+      (S.aiFiles=S.aiFiles||[]).push(meta); ok++;
+    }catch(e){ console.error(e); toast(e.message||"Filen kunde inte sparas."); }
+  }
+  if(ok) toast(ok===1?"Filen är sparad. AI:n läser den nästa gång du räknar.":ok+" filer är sparade. AI:n läser dem nästa gång du räknar.");
+}
+async function deleteAiFile(id){
+  const f=(S.aiFiles||[]).find(x=>x.id===id); if(!f) return;
+  await Store.del("aifiles/"+id);
+  for(let i=0;i<(f.chunks||0);i++){ try{ await Store.del("aifiledata/"+id+"__"+i); }catch(e){ console.error(e); } }
+  S.aiFiles=(S.aiFiles||[]).filter(x=>x.id!==id);
+}
+async function aiFileData(f){
+  let out="";
+  for(let i=0;i<(f.chunks||0);i++){ const d=await Store.get("aifiledata/"+f.id+"__"+i); out+=(d&&d.data)||""; }
+  return out;
+}
+function filesPanel(scope, title, hint){
+  const list=aiFilesFor(scope);
+  const label=f=>f.kind==="text"?"text":f.mime==="application/pdf"?"PDF":"bild";
+  return '<div class="aifiles"><div class="aifiles-hd"><div><b>'+title+'</b><div class="note">'+hint+'</div></div>'
+    + '<label class="btn sm" style="cursor:pointer">Lägg till fil'
+    + '<input type="file" class="aifile-in" data-scope="'+esc(scope)+'" multiple hidden '
+    + 'accept="image/*,application/pdf,.pdf,.xlsx,.xlsm,.xls,.ods,.csv,.txt,.md"></label></div>'
+    + (list.length?'<ul class="aifile-list">'+list.map(f=>'<li><span class="aifile-name">'+esc(f.name)+'</span>'
+        + '<span class="note">'+label(f)+' · '+fileSize(f.size)+'</span>'
+        + '<button class="btn sm ghost" data-act="lrfiledel" data-f="'+esc(f.id)+'" aria-label="Ta bort '+esc(f.name)+'">✕</button></li>').join("")+'</ul>'
+      :'')+'</div>';
+}
+/* Filerna som följer med en kalkyl: offertens egna först, sedan firmans. */
+async function aiFilesPayload(o){
+  const own=o.id?aiFilesFor("offer:"+o.id):[], firmF=aiFilesFor("learn");
+  const files=[]; let total=0, skipped=[];
+  for(const f of own.concat(firmF)){
+    if(f.kind!=="inline") continue;
+    if(total+f.size*1.34>AISEND_MAX){ skipped.push(f.name); continue; }
+    const data=await aiFileData(f); if(!data) continue;
+    total+=data.length;
+    files.push({name:f.name, mime:f.mime, data:data, from:f.scope==="learn"?"firma":"kund"});
+  }
+  const attachText=own.filter(f=>f.kind==="text"&&f.text).map(f=>"### "+f.name+"\n"+f.text).join("\n\n").slice(0,60000);
+  return {files:files, attachText:attachText, skipped:skipped};
 }
 
 async function handleKalkyl(act, t){
@@ -3965,7 +4069,10 @@ async function handleKalkyl(act, t){
     if(!o.id) return true;
     if(!confirmTwice("offdel")) { toast("Tryck på Ta bort en gång till för att ta bort offerten."); return true; }
     const ok=await guard(function(){ return Store.del("offers/"+o.id); }, "Offerten är borttagen.");
-    if(ok){ S.offers=(S.offers||[]).filter(x=>x.id!==o.id); S.off=null; S.offSel=null; render(); }
+    if(ok){
+      for(const f of aiFilesFor("offer:"+o.id)){ try{ await deleteAiFile(f.id); }catch(e){ console.error(e); } }
+      S.offers=(S.offers||[]).filter(x=>x.id!==o.id); S.off=null; S.offSel=null; render();
+    }
     return true;
   }
   return false;
@@ -5171,6 +5278,23 @@ document.addEventListener("change", async function(ev){
     return;
   }
   if(ev.target.id==="st-scope"){ S.statScope=ev.target.value; render(); return; }
+  if(ev.target.classList && ev.target.classList.contains("aifile-in")){
+    if(!isAdmin()) return;
+    const files=Array.from(ev.target.files||[]); let scope=ev.target.dataset.scope;
+    ev.target.value="";
+    if(!files.length) return;
+    if(scope.indexOf("offer:")===0){
+      if(!S.off) return;
+      offerRead();
+      /* samma id som offerten får när den sparas */
+      if(!S.off.id) S.off.id=slug("offert-"+S.off.nr);
+      scope="offer:"+S.off.id;
+    }else learnRead();
+    toast("Läser in "+(files.length===1?files[0].name:files.length+" filer")+" …");
+    await uploadAiFiles(scope, files);
+    render(); if(S.off) offerLive();
+    return;
+  }
   if(ev.target.id==="photo-in"){
     const files=Array.from(ev.target.files||[]), pid=ev.target.dataset.p;
     ev.target.value="";

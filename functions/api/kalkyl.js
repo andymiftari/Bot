@@ -46,6 +46,7 @@ Regler:
 - Kunden ser aldrig inköpspris eller påslag. Beskrivningen av arbetet (intro) och mejlet får därför aldrig nämna dem.
 - Är förfrågan för otydlig för att räkna: räkna ändå på det mest troliga utförandet, sätt confidence till "låg", och lägg tyngden på frågorna till kunden.
 - Får du FIRMANS KUNSKAP gäller den före allt annat: priser i firmans egen prislista används i stället för webbpriser (skriv "Egen prislista" som källa och estimated=false), tidsnormerna används för timmarna, och de fasta reglerna följs alltid. De lärda exemplen visar hur firman faktiskt räknar liknande jobb: lägg dig på samma nivå för timmar, påslag och resor. Där ett exempel säger att AI:n först räknade fel, eller där utfallet i projektet blev ett annat, rätta åt samma håll. Skriv i sanity vilket exempel du jämfört med och hur din kalkyl förhåller sig till det.
+- Bilagor från kunden (ritningar, foton, dokument) visar jobbet: läs mått, antal, material och detaljer ur dem och säg i antagandena vad du tagit därifrån. Firmans egna bilagor (prislistor, leverantörsofferter, mallar) räknas som firmans kunskap.
 - När du är klar: anropa verktyget spara_kalkyl exakt en gång med hela kalkylen. Skriv ingen annan slutsammanfattning.`;
 
 const STR = { type: "string" };
@@ -136,17 +137,21 @@ function normalize(r) {
   };
 }
 
-async function runGemini(env, userText, send) {
+async function runGemini(env, userText, send, files = []) {
+  const parts = [{ text: userText }].concat(files.flatMap(f => [
+    { text: "Bilaga: " + f.name + " (" + (f.from === "kund" ? "från kunden" : "firmans underlag") + ")" },
+    { inline_data: { mime_type: f.mime, data: f.data } }
+  ]));
   const onModel = m => send({ status: "Räknar med " + m + " och söker priser med Google …" });
   let res;
   try {
-    res = await geminiJson(env, { system: SYSTEM_GEMINI, parts: [{ text: userText }], search: true, temperature: 0.3, maxTokens: 32768 }, onModel);
+    res = await geminiJson(env, { system: SYSTEM_GEMINI, parts, search: true, temperature: 0.3, maxTokens: 32768 }, onModel);
   } catch (e) {
     /* Googlesökningen har en egen kvot – räkna utan den hellre än inte alls. */
     if (!(e instanceof GeminiError) || e.status === 503) throw e;
     send({ status: "Prissökningen är inte tillgänglig just nu – räknar med uppskattade priser …" });
     res = await geminiJson(env, { system: SYSTEM_GEMINI + "\n\nWebbsökning är inte tillgänglig: uppskatta alla priser och sätt estimated=true.",
-      parts: [{ text: userText }], temperature: 0.3, maxTokens: 32768 });
+      parts, temperature: 0.3, maxTokens: 32768 });
   }
   if (res.queries.length) send({ status: "Sökte: " + res.queries.slice(0, 4).join(" · ") });
   let r = res.json;
@@ -191,7 +196,16 @@ export async function onRequestPost({ request, env, waitUntil }) {
   if (!mail) return json(400, { error: "Klistra in kundens förfrågan först." });
   const firm = body.firm && typeof body.firm === "object" ? body.firm : {};
   const today = String(body.today || new Date().toISOString().slice(0, 10)).slice(0, 10);
-  const knowledge = String(body.knowledge || "").trim().slice(0, 40000);
+  const knowledge = String(body.knowledge || "").trim().slice(0, 80000);
+  const attachText = String(body.attachText || "").trim().slice(0, 60000);
+  /* Bilder och PDF:er. Bara format båda AI-tjänsterna läser, och inte mer än
+     att förfrågan ryms (Gemini tar 20 MB per förfrågan). */
+  const OK_MIME = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+  let budget = 18e6;
+  const files = (Array.isArray(body.files) ? body.files : []).slice(0, 12).filter(f => {
+    if (!f || !OK_MIME.includes(f.mime) || typeof f.data !== "string" || !/^[A-Za-z0-9+/=]+$/.test(f.data)) return false;
+    budget -= f.data.length; return budget >= 0;
+  }).map(f => ({ name: String(f.name || "fil").slice(0, 160), mime: f.mime, data: f.data, from: f.from === "firma" ? "firma" : "kund" }));
 
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
@@ -203,12 +217,21 @@ export async function onRequestPost({ request, env, waitUntil }) {
     try {
       const userText = "Dagens datum: " + today + "\n\n" + firmText(firm)
         + (knowledge ? "\n\nFIRMANS KUNSKAP (inlärd av firman själv):\n<kunskap>\n" + knowledge + "\n</kunskap>" : "")
-        + "\n\nKundens förfrågan:\n<forfragan>\n" + mail + "\n</forfragan>";
+        + "\n\nKundens förfrågan:\n<forfragan>\n" + mail + "\n</forfragan>"
+        + (attachText ? "\n\nBilagor från kunden (text):\n<bilagor>\n" + attachText + "\n</bilagor>" : "")
+        + (files.length ? "\n\nBifogade filer: " + files.map(f => f.name + " (" + (f.from === "kund" ? "från kunden" : "firmans underlag") + ")").join(", ") + "." : "");
       send({ status: "Läser förfrågan …" });
-      if (!env.ANTHROPIC_API_KEY) { send({ result: await runGemini(env, userText, send) }); return; }
+      if (files.length) send({ status: "Läser " + files.length + (files.length === 1 ? " bifogad fil" : " bifogade filer") + " …" });
+      if (!env.ANTHROPIC_API_KEY) { send({ result: await runGemini(env, userText, send, files) }); return; }
 
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-      const messages = [{ role: "user", content: userText }];
+      const fileBlocks = files.flatMap(f => [
+        { type: "text", text: "Bilaga: " + f.name + " (" + (f.from === "kund" ? "från kunden" : "firmans underlag") + ")" },
+        f.mime === "application/pdf"
+          ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: f.data } }
+          : { type: "image", source: { type: "base64", media_type: f.mime, data: f.data } }
+      ]);
+      const messages = [{ role: "user", content: [{ type: "text", text: userText }, ...fileBlocks] }];
 
       let result = null;
       for (let round = 0; round <= MAX_CONTINUATIONS && !result; round++) {

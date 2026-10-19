@@ -184,6 +184,15 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Filer till AI-kalkylen: ritningar, prislistor och liknande, och
+    // själva innehållet uppdelat i bitar.
+    match /aifiles/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /aifiledata/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // Firmans bilar. Alla inloggade ser dem – de behövs för att kunna
     // rapportera körning – men bara superadmin lägger upp och ändrar.
     match /vehicles/{vehId} {
