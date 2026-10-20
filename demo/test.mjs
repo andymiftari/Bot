@@ -237,6 +237,29 @@ const tests = {
     await ctx.close();
   },
 
+  "skapa projekt av offerten": async () => {
+    const {p, ctx} = await open();
+    await tab(p, "kalkyl");
+    await p.click('tr[data-act="offopen"][data-o$="-002"]'); await p.waitForTimeout(500);
+    await p.click('[data-act="offmkproj"]'); await p.waitForTimeout(900);
+    const d = await data(p);
+    const proj = Object.values(d).find(x => x && x.quote && x.quote.offerId && x.quote.offerId.endsWith("-002"));
+    check(proj, "inget projekt skapades");
+    check(proj.kod === "P-1048", "fel projektkod: " + proj.kod);
+    check(proj.kund === "Brf Kvarnen" && proj.adress.includes("Kvarngatan"), "kund eller adress följde inte med");
+    check(Math.round(proj.quote.total) === 39088 && proj.quote.hours === 48 && proj.rate === 650, "kalkylen följde inte med: " + JSON.stringify(proj.quote));
+    const off = Object.values(d).find(x => x && x.nr && x.nr.endsWith("-002") && x.rows);
+    check(off.status === "accepterad", "offerten blev inte accepterad");
+    check(await p.evaluate(() => !!document.querySelector('.tab[data-v="projekt"][aria-selected="true"]')), "projektet öppnades inte");
+    check((await p.content()).includes("Trappräcke rostfritt, Kvarngatan"), "projektsidan visar inte projektet");
+    // tillbaka i offerten: knappen ersatt av länk till projektet
+    await tab(p, "kalkyl");
+    await p.click('tr[data-act="offopen"][data-o$="-002"]'); await p.waitForTimeout(400);
+    check(!(await p.$('[data-act="offmkproj"]')) && !!(await p.$('[data-act="offgoproj"]')), "offerten kan skapa projekt två gånger");
+    check(!p.errors.length, p.errors.join(" | "));
+    await ctx.close();
+  },
+
   "inloggning som arbetare": async () => {
     const {p, ctx} = await open();
     await p.click('[data-act="memenu"]'); await p.waitForTimeout(250);

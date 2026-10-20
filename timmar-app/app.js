@@ -3720,6 +3720,7 @@ function viewOffer(){
     + '<button class="btn" data-act="offpdf">Ladda ner PDF</button>'
     + (o.id?'<button class="btn ghost" data-act="offdel">Ta bort</button>':'')
     + '</div>'
+    + offerProjectBar(o)
     + '<div class="grid2" style="margin-bottom:14px">'
     + '<div class="panel" style="padding:14px"><h3 style="margin-bottom:8px">Kundens förfrågan</h3>'
     + fld("k-mail","Klistra in kundens mejl (underlag – syns inte i offerten)",o.mail,"area",9)
@@ -3766,6 +3767,30 @@ function viewOffer(){
       : "Mejlprogrammet öppnas med ämne och text ifyllt. Bifoga PDF:en du laddat ner innan du skickar.")+'</p>'
     + '</div></div></div>';
 }
+/* Offert → projekt. Ett accepterat jobb ska inte behöva skrivas in en gång
+   till: kund, adress, timpris och hela kalkylen följer med, och projektet
+   kopplas till offerten så att budgetstapeln och Statistik fungerar direkt. */
+const projForOffer = id => (S.projects||[]).find(p=>(p.quote||{}).offerId===id);
+function offerProjectBar(o){
+  if(!o.id) return "";
+  const p=projForOffer(o.id);
+  if(p) return '<div class="banner"><span>Projektet <b>'+esc(p.kod||p.name)+' · '+esc(p.name)+'</b> är skapat från offerten.</span>'
+    + '<button class="btn sm" style="margin-left:auto" data-act="offgoproj" data-p="'+esc(p.id)+'">Öppna projektet</button></div>';
+  if(o.status!=="accepterad" && o.status!=="skickad") return "";
+  return '<div class="banner"><span>'+(o.status==="accepterad"?'Offerten är accepterad.':'Har kunden sagt ja?')
+    + ' Skapa projektet direkt – kund, adress, timpris och kalkyl följer med.</span>'
+    + '<button class="btn sm primary" style="margin-left:auto" data-act="offmkproj">Skapa projekt av offerten</button></div>';
+}
+/* Nästa lediga projektkod i samma stil som de som finns: P-1047 → P-1048. */
+function nextProjKod(){
+  let best=null;
+  (S.projects||[]).forEach(function(p){
+    const m=/^(.*?)(\d+)$/.exec(String(p.kod||"").trim()); if(!m) return;
+    const n=+m[2]; if(!best || n>best.n) best={pre:m[1], n:n, w:m[2].length};
+  });
+  return best ? best.pre+String(best.n+1).padStart(best.w,"0") : "P-1001";
+}
+
 /* Läser av formuläret till S.off. Körs vid varje tangenttryckning och före
    varje knapptryck, så att inget man skrivit tappas när vyn ritas om. */
 function offerRead(){
@@ -4289,6 +4314,37 @@ async function handleKalkyl(act, t){
     return true;
   }
   if(act==="offmailreset"){ o.mailEdited=false; o.mailText=""; render(); offerLive(); return true; }
+  if(act==="offgoproj"){ S.off=null; S.offSel=null; S.tab="projekt"; S.projSel=t.dataset.p; S.projPhotosFor=null; await loadProjectData(); render(); window.scrollTo(0,0); return true; }
+  if(act==="offmkproj"){
+    if(!o.id) return true;
+    if(projForOffer(o.id)) return true;
+    if(!String((o.customer||{}).name||"").trim()){ toast("Fyll i kundens namn först."); return true; }
+    /* att skapa projektet betyder att kunden sagt ja */
+    if(o.status!=="accepterad"){
+      o.status="accepterad";
+      const ob=offerBody(o);
+      if(!(await guard(function(){ return Store.set("offers/"+o.id, ob); }))) return true;
+      const j=(S.offers||[]).findIndex(x=>x.id===o.id); if(j>=0) S.offers[j]=ob;
+    }
+    const c=offerCalc(o), cu=o.customer||{}, f=firm();
+    const name=String(o.title||cu.name||("Offert "+o.nr)).trim();
+    let id=slug(name); if(projById(id)) id=slug(name+"-"+(o.nr||uid()));
+    const work=(o.rows||[]).find(r=>r.kind==="arbete" && +r.price>0);
+    const kontakt=[cu.contact, cu.phone, cu.email].filter(Boolean).join(", ");
+    const kod=nextProjKod(), now=new Date().toISOString();
+    const body={id:id, name:name, kod:kod, kund:String(cu.name||"").trim(), adress:String(cu.address||"").trim(),
+      status:"aktiv", invoice:"ej", rate: work ? r2(+work.price) : (+f.rate||""),
+      notes:"Skapat från offert "+(o.nr||"")+"."+(kontakt?" Kontakt: "+kontakt+".":""),
+      quote:{total:c.sums.net, hours:c.sums.hours, labour:c.sums.arbete, material:c.sums.material, travel:c.sums.resa, other:0,
+        offerId:o.id, offerNr:o.nr||""},
+      createdAt:now, updatedAt:now};
+    if(!(await guard(function(){ return Store.set("projects/"+id, body); }, "Projektet "+kod+" är skapat."))) return true;
+    S.projects.push(body);
+    S.projects.sort((a,b)=>String(a.kod||"").localeCompare(String(b.kod||""),"sv"));
+    S.off=null; S.offSel=null; S.tab="projekt"; S.projSel=id; S.projPhotosFor=null;
+    await loadProjectData(); render(); window.scrollTo(0,0);
+    return true;
+  }
   if(act==="offsave"||act==="offpdf"||act==="offshare"){
     if(!String(o.customer.name||"").trim()) { toast("Fyll i kundens namn först."); return true; }
     if(!o.id) o.id=slug("offert-"+o.nr);
