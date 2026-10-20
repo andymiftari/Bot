@@ -53,7 +53,7 @@ async function tab(p, t){
   if(!(await p.$eval(sel, e => getComputedStyle(e).display !== "none"))) await p.click('[data-act="moretabs"]');
   await p.click(sel); await p.waitForTimeout(450); await closeModal(p);
 }
-const data = p => p.evaluate(() => JSON.parse(localStorage.getItem("ellingesmide-demo-v3")));
+const data = p => p.evaluate(() => JSON.parse(localStorage.getItem("ellingesmide-demo-v4")));
 async function tomorrowWorkday(p){ return p.evaluate(() => { const d=new Date(); d.setDate(d.getDate()+1); while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()+1); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }); }
 function check(cond, msg){ if(!cond) throw new Error(msg); }
 
@@ -158,7 +158,7 @@ const tests = {
 
   "körjournal i svensk tid": async () => {
     const {p, ctx} = await open();
-    await p.evaluate(() => { const LS="ellingesmide-demo-v3", d=JSON.parse(localStorage.getItem(LS)), n=new Date();
+    await p.evaluate(() => { const LS="ellingesmide-demo-v4", d=JSON.parse(localStorage.getItem(LS)), n=new Date();
       const a=new Date(n.getFullYear(), n.getMonth(), 1, 0, 30);
       d["trips/natt"]={id:"natt",vehicleId:"bil-xyz789",regnr:"XYZ789",empId:"u-erik",empName:"Erik Lund",projectId:"service-allmant",kind:"tjanst",purpose:"Nattresa",startKm:1,startAt:a.toISOString(),endKm:31,endAt:new Date(a.getTime()+3e6).toISOString(),km:30,status:"done"};
       localStorage.setItem(LS, JSON.stringify(d)); });
@@ -172,7 +172,7 @@ const tests = {
   "xss: skadlig text körs aldrig": async () => {
     const {p, ctx} = await open({viewport:{width:1280, height:900}});
     await p.evaluate(() => {
-      const LS="ellingesmide-demo-v3", d=JSON.parse(localStorage.getItem(LS));
+      const LS="ellingesmide-demo-v4", d=JSON.parse(localStorage.getItem(LS));
       const P=f=>'"><img src=x onerror="window.__xss=(window.__xss||[]).concat(\''+f+'\')">';
       const skip=/^(id|empId|projectId|vehicleId|type|kind|status|role|month|week|unit|invoice|authEmail|startAt|endAt|at|createdAt|updatedAt|date|ownerUid|created|byId|tripId|which|archivedAt)$/;
       const walk=(o,path)=>{ for(const k of Object.keys(o)){ const v=o[k];
@@ -224,6 +224,16 @@ const tests = {
     check(!reps.some(m => m.includes("Failed to fetch")), "nätbrus rapporterades");
     await tab(p, "inkorg");
     check((await p.content()).includes("Automatisk felrapport"), "rapporten syns inte i Inkorg");
+    await ctx.close();
+  },
+
+  "offerter som snart går ut märks": async () => {
+    const {p, ctx} = await open();
+    await tab(p, "kalkyl");
+    const txt = await p.$eval("#app", e => e.innerText);
+    check(/Går ut om 4 dagar/.test(txt), "offerten som går ut om 4 dagar är inte märkt");
+    check(/Utgången för 11 dagar sedan/.test(txt), "den utgångna offerten är inte märkt");
+    check(/går ut inom en vecka/.test(txt), "påminnelsen ovanför listan saknas");
     await ctx.close();
   },
 

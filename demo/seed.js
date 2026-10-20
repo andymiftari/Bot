@@ -181,13 +181,18 @@ export function seed(){
      {kind:"material", desc:"Varmförzinkning", qty:1, unit:"st", cost:14800, markup:10},
      {kind:"resa", desc:"Resor Ellinge–Malmö", qty:40, unit:"mil", price:65}],
     "Hej! Vi behöver nya balkongräcken till 12 balkonger på Södra Esplanaden 8. Ritningar bifogas.");
-  offer("offert-" + y + "-002", y + "-002", "skickad", 9, "Trappräcke rostfritt, Kvarngatan",
+  offer("offert-" + y + "-002", y + "-002", "skickad", 26, "Trappräcke rostfritt, Kvarngatan",
     {name:"Brf Kvarnen", contact:"Olle Lind", address:"Kvarngatan 3, 222 22 Lund", email:"olle@exempel.se", phone:""},
     [{kind:"arbete", desc:"Tillverkning och montering", qty:48, unit:"tim", price:650},
      {kind:"material", desc:"Rostfritt rör 42,4 mm", qty:26, unit:"m", cost:185, markup:15},
      {kind:"material", desc:"Handledarhållare", qty:18, unit:"st", cost:95, markup:15},
      {kind:"resa", desc:"Resor", qty:6, unit:"mil", price:65}],
     "Hej, vi vill ha offert på ett rostfritt trappräcke i trapphuset, ca 12 meter.");
+  offer("offert-" + y + "-004", y + "-004", "skickad", 41, "Ståltrappa till loft",
+    {name:"Jonas Berg", contact:"", address:"Lönnvägen 2, 247 00 Ellinge", email:"jonas@exempel.se", phone:""},
+    [{kind:"arbete", desc:"Tillverkning och montering", qty:30, unit:"tim", price:650},
+     {kind:"material", desc:"UPE 160 och trappsteg", qty:1, unit:"st", cost:9800, markup:15}],
+    "Hej, jag funderar på en ståltrappa upp till loftet i garaget.");
   offer("offert-" + y + "-003", y + "-003", "utkast", 1, "Grind och staket, Åkervägen",
     {name:"Karin Nyström", contact:"", address:"Åkervägen 7, 247 00 Ellinge", email:"karin@exempel.se", phone:""},
     [{kind:"arbete", desc:"Grind 3,5 m med motor förberedelse", qty:22, unit:"tim", price:650},

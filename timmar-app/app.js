@@ -3565,9 +3565,11 @@ function viewKalkyl(){
     return '<tr class="click" data-act="offopen" data-o="'+esc(o.id)+'"><td class="r">'+esc(o.nr)+'</td>'
       + '<td>'+esc((o.customer||{}).name||"—")+'</td><td>'+esc(o.title||"—")+'</td>'
       + '<td class="r">'+esc(kr(c.sums.gross))+'</td>'
-      + '<td><span class="pill'+(o.status==="accepterad"?" solid":o.status==="utkast"?" dash":"")+'">'+esc(OFFER_STATUS[o.status]||o.status)+'</span></td>'
+      + '<td><span class="pill'+(o.status==="accepterad"?" solid":o.status==="utkast"?" dash":"")+'">'+esc(OFFER_STATUS[o.status]||o.status)+'</span>'
+      + offerDue(o, c)+'</td>'
       + '<td class="r">'+esc(o.date||"")+'</td></tr>';
   }).join("");
+  const waiting=list.filter(o=>o.status==="skickad"), soon=waiting.filter(o=>daysLeft(offerCalc(o).validTo)<=7);
   return '<div class="bar"><span class="note">Klistra in kundens mejl, fyll i arbete, material och resor – appen räknar '
     + 'fram offerten med moms och gör en PDF och en färdig mejltext.</span>'
     + '<button class="btn primary" style="margin-left:auto" data-act="offnew">Ny offert</button>'
@@ -3576,10 +3578,22 @@ function viewKalkyl(){
     + (saknas?'<div class="panel" style="padding:12px 14px;margin-bottom:14px"><b>Fyll i firmauppgifterna först.</b> '
       + '<span class="note">Organisationsnummer, bankgiro, adress och telefon står längst ner på varje offert. '
       + 'Tryck på <b>Firmauppgifter</b>.</span></div>':'')
+    + (soon.length?'<div class="banner"><span>'+(soon.length===1?'En skickad offert':soon.length+' skickade offerter')
+      + ' går ut inom en vecka eller har redan gått ut – hör av dig till kunden innan priset slutar gälla.</span></div>':'')
     + (list.length
       ? '<div class="tblwrap"><table class="tbl"><thead><tr><th class="r">Nr</th><th>Kund</th><th>Avser</th>'
         + '<th class="r">Inkl. moms</th><th>Status</th><th class="r">Datum</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
       : '<div class="panel" style="padding:18px"><p class="note">Inga offerter ännu. Tryck på <b>Ny offert</b>.</p></div>');
+}
+/* Dagar kvar till ett datum (negativt när det har passerat). */
+const daysLeft = ds => Math.round((fromKey(ds) - fromKey(dkey(new Date()))) / 864e5);
+/* En skickad offert som snart går ut är pengar som kan försvinna – visa det. */
+function offerDue(o, c){
+  if(o.status!=="skickad" || !c.validTo) return "";
+  const n=daysLeft(c.validTo);
+  if(n<0) return '<span class="due bad">Utgången'+(n===-1?' i går':' för '+(-n)+' dagar sedan')+'</span>';
+  if(n<=7) return '<span class="due warn">'+(n===0?'Går ut i dag':n===1?'Går ut i morgon':'Går ut om '+n+' dagar')+'</span>';
+  return '<span class="due">Gäller till '+esc(c.validTo)+'</span>';
 }
 function offRowHtml(r, i){
   const id="k-r"+i;

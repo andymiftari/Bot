@@ -7,7 +7,7 @@
 import { seed } from "./seed.js";
 
 /* Höjs när testdatan ändras, så att alla får den nya direkt. */
-const LS = "ellingesmide-demo-v3";
+const LS = "ellingesmide-demo-v4";
 const clone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
 let data = null;
 
