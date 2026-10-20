@@ -334,6 +334,24 @@ const tests = {
     await ctx.close();
   },
 
+  "i dag på firman": async () => {
+    const {p, ctx} = await open();
+    await p.waitForSelector(".firmday", {timeout:5000});
+    const txt = await p.$eval(".firmday", e => e.innerText);
+    const workday = await p.evaluate(() => { const d=new Date().getDay(); return d>0 && d<6; });
+    if(workday) check(/4\s*\/5[\s\S]*Saknas: Anna/.test(txt), "fel om vilka som rapporterat: " + txt.replace(/\s+/g," "));
+    check(/1\s*resa pågår/.test(txt), "den pågående resan syns inte: " + txt.replace(/\s+/g," "));
+    check(/2\s*offerter går ut/.test(txt), "offerterna som går ut syns inte");
+    await p.click('.firmday-item[data-v="kor"]'); await p.waitForTimeout(500);
+    check(await p.evaluate(() => !!document.querySelector('.tab[data-v="kor"][aria-selected="true"]')), "trycket ledde inte till Körjournal");
+    await ctx.close();
+    const w = await open();
+    await w.p.click('[data-act="memenu"]'); await w.p.waitForTimeout(200); await w.p.click('[data-act="logout"]'); await w.p.waitForTimeout(400);
+    await w.p.fill("#l-user", "erik"); await w.p.fill("#l-pw", "x"); await w.p.click('[data-act="login"]'); await w.p.waitForSelector(".tab"); await w.p.waitForTimeout(500);
+    check(!(await w.p.$(".firmday")), "en arbetare ser översikten");
+    await w.ctx.close();
+  },
+
   "inloggning som arbetare": async () => {
     const {p, ctx} = await open();
     await p.click('[data-act="memenu"]'); await p.waitForTimeout(250);

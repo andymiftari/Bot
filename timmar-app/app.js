@@ -790,9 +790,48 @@ function topbar(){
 }
 
 /* ============================ tidrapport ============================ */
+/* "I dag på firman" – det chefen vill veta först på morgonen och på
+   eftermiddagen. Hämtas i bakgrunden och kostar några få små frågor. */
+async function loadToday(){
+  if(!isAdmin()) return;
+  const now=new Date(), ds=dkey(now);
+  const [months, open, tasks]=await Promise.all([
+    Store.list("months","month",mkey(now)).catch(()=>[]),
+    Store.list("trips","status","open").catch(()=>[]),
+    Store.list("projtasks","done",false).catch(()=>[])
+  ]);
+  if(!S.offers || !S.offers.length){ try{ await loadOffers(); }catch(e){} }
+  S.today={ds:ds, months:months, open:open, tasks:tasks, at:Date.now()};
+}
+function todayCard(){
+  if(!isAdmin()) return "";
+  if(!S.today || S.today.ds!==dkey(new Date()) || Date.now()-S.today.at>5*60e3){
+    if(!S.todayLoading){ S.todayLoading=true; loadToday().catch(e=>console.error(e)).finally(()=>{ S.todayLoading=false; scheduleRender(); }); }
+    if(!S.today) return "";
+  }
+  const T=S.today, ds=T.ds, work=isWorkday(ds);
+  const staff=S.employees.filter(e=>e.role!=="support" || e.id===S.me.id);
+  const has=e=>((T.months.find(m=>m.empId===e.id)||{}).days||{})[ds];
+  const done=staff.filter(e=>(has(e)||[]).length), missing=staff.filter(e=>!(has(e)||[]).length);
+  const soon=(S.offers||[]).filter(o=>o.status==="skickad" && daysLeft(offerCalc(o).validTo)<=7);
+  const projOpen=new Set(T.tasks.map(x=>x.projectId)).size;
+  const item=(n,label,sub,act,v,cls)=>'<button class="firmday-item'+(cls?' '+cls:'')+'" data-act="'+act+'"'+(v?' data-v="'+v+'"':'')+'>'
+    + '<span class="firmday-n">'+n+'</span><span class="firmday-l">'+label+(sub?'<span class="note">'+sub+'</span>':'')+'</span></button>';
+  const d=fromKey(ds);
+  return '<div class="firmday" aria-label="I dag på firman">'
+    + '<div class="firmday-hd"><span class="eyebrow">I dag på firman · '+DAYS_S[isoDow(d)].toLowerCase()+' '+d.getDate()+' '+MONTHS[d.getMonth()].slice(0,3)+'</span></div>'
+    + '<div class="firmday-grid">'
+    + (work
+        ? item(done.length+'<s>/'+staff.length+'</s>', 'har rapporterat', missing.length&&missing.length<=4?'Saknas: '+esc(missing.map(e=>String(e.name).split(" ")[0]).join(", ")):(missing.length?missing.length+' saknas':'Alla klara'), 'tab', 'attest', missing.length?'warn':'ok')
+        : item('—', 'helgdag', esc(holidayName(ds)||'ingen tid väntas'), 'tab', 'attest', ''))
+    + item(T.open.length, T.open.length===1?'resa pågår':'resor pågår', T.open.length?esc(T.open.map(t=>t.regnr+' · '+String(t.empName||"").split(" ")[0]).slice(0,2).join(", ")):'', 'tab', 'kor', '')
+    + item(soon.length, soon.length===1?'offert går ut':'offerter går ut', soon.length?'inom en vecka':'', 'tab', 'kalkyl', soon.length?'warn':'')
+    + item(T.tasks.length, 'att göra', T.tasks.length?'i '+projOpen+(projOpen===1?' projekt':' projekt'):'', 'tab', 'projekt', '')
+    + '</div></div>';
+}
 function viewTid(){
   const emp=(isAdmin() ? S.employees.find(e=>e.id===S.targetEmp) : null) || S.me;
-  let head='<div class="bar">'
+  let head=todayCard()+'<div class="bar">'
     + '<div class="navgroup">'
     + '<button class="btn sm" data-act="prev" aria-label="Föregående">‹</button>'
     + '<div class="per">'+periodLabel()+'</div>'

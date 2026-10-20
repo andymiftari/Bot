@@ -500,6 +500,20 @@ h2{font-size:26px} h3{font-size:18px}
 .projsearch input[type=search]{flex:1 1 260px;max-width:440px;padding-left:40px;-webkit-appearance:none;appearance:none}
 .projsearch input[type=search]::-webkit-search-cancel-button{display:none}
 
+/* "I dag på firman" överst i Tidrapport för admin */
+.firmday{margin-bottom:16px}
+.firmday-hd{margin-bottom:6px}
+.firmday-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.firmday-item{display:flex;align-items:baseline;gap:10px;padding:12px 14px;background:var(--surface);border:0;text-align:left;cursor:pointer;font:inherit;color:inherit;min-width:0}
+.firmday-item:hover{background:var(--surface-2)}
+.firmday-n{font-size:26px;font-weight:700;font-stretch:85%;line-height:1;font-variant-numeric:tabular-nums}
+.firmday-n s{text-decoration:none;font-size:16px;color:var(--muted);font-weight:600}
+.firmday-l{display:flex;flex-direction:column;gap:2px;font-weight:600;font-size:14px;min-width:0}
+.firmday-l .note{font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.firmday-item.warn .firmday-n{color:var(--warn)}
+.firmday-item.ok .firmday-n{color:var(--ok)}
+@media (max-width:760px){ .firmday-grid{grid-template-columns:repeat(2,minmax(0,1fr))} .firmday-item{padding:10px 12px} .firmday-n{font-size:22px} }
+
 /* "Att göra" i projektet – rutan är stor nog för en tumme med handske */
 .tasks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .task{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
