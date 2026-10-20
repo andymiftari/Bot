@@ -3758,6 +3758,7 @@ function viewOffer(){
     + '</select></label>'
     + '<button class="btn primary" data-act="offsave">Spara</button>'
     + '<button class="btn" data-act="offpdf">Ladda ner PDF</button>'
+    + (o.id?'<button class="btn" data-act="offdup" title="Ny offert med samma rader – för ett liknande jobb">Kopiera till ny</button>':'')
     + (o.id?'<button class="btn ghost" data-act="offdel">Ta bort</button>':'')
     + '</div>'
     + offerProjectBar(o)
@@ -4354,6 +4355,16 @@ async function handleKalkyl(act, t){
     return true;
   }
   if(act==="offmailreset"){ o.mailEdited=false; o.mailText=""; render(); offerLive(); return true; }
+  if(act==="offdup"){
+    /* Ett liknande jobb: samma rader, rubrik och villkor, men ny kund, nytt
+       nummer och dagens datum. AI-underlaget och mejlet följer inte med. */
+    const n=newOffer();
+    S.off=Object.assign(n, {title:o.title||"", intro:o.intro||"", terms:o.terms||n.terms,
+      rows:JSON.parse(JSON.stringify(o.rows||[])), copiedFrom:o.nr||""});
+    S.offSel="new"; render(); offerLive(); window.scrollTo(0,0);
+    toast("Kopia av offert "+(o.nr||"")+" – fyll i kunden och spara.");
+    return true;
+  }
   if(act==="offgoproj"){ S.off=null; S.offSel=null; S.tab="projekt"; S.projSel=t.dataset.p; S.projPhotosFor=null; await loadProjectData(); render(); window.scrollTo(0,0); return true; }
   if(act==="offmkproj"){
     if(!o.id) return true;

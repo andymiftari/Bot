@@ -282,6 +282,22 @@ const tests = {
     await ctx.close();
   },
 
+  "kopiera offert till ny": async () => {
+    const {p, ctx} = await open();
+    await tab(p, "kalkyl");
+    await p.click('tr[data-act="offopen"][data-o$="-002"]'); await p.waitForTimeout(500);
+    await p.click('[data-act="offdup"]'); await p.waitForTimeout(500);
+    const per = await p.$eval(".bar .per", e => e.textContent);
+    check(/-005$/.test(per), "fel nummer på kopian: " + per);
+    check(await p.$eval("#k-status", e => e.value) === "utkast", "kopian är inte ett utkast");
+    const rows = await p.$$eval("#kalk input[id$='-desc']", i => i.map(x => x.value));
+    check(rows.includes("Rostfritt rör 42,4 mm") && rows.length === 4, "raderna följde inte med: " + rows.join(", "));
+    const kund = await p.$$eval("#kalk input", i => (i.find(x => /kund|cust|k-name|k-cname/.test(x.id)) || {}).value || "");
+    check(kund === "", "kunden följde med: " + kund);
+    check(!p.errors.length, p.errors.join(" | "));
+    await ctx.close();
+  },
+
   "inloggning som arbetare": async () => {
     const {p, ctx} = await open();
     await p.click('[data-act="memenu"]'); await p.waitForTimeout(250);
