@@ -91,7 +91,10 @@ function notify(){
 }
 
 export const getDoc = ref => later(() => snap(ref.path));
-export const getDocs = q => later(() => ({docs: run(q)}));
+/* window.__demoReads räknar hämtade dokument per samling – för hastighetstester. */
+const reads = window.__demoReads = {};
+const count = (coll, n) => { reads[coll] = (reads[coll] || 0) + n; };
+export const getDocs = q => later(() => { const docs = run(q); count(q.coll, docs.length); return {docs}; });
 export const setDoc = (ref, body, opts) => later(() => {
   data[ref.path] = (opts && opts.merge) ? Object.assign({}, data[ref.path] || {}, clone(body)) : clone(body);
   notify();
@@ -100,7 +103,9 @@ export const deleteDoc = ref => later(() => { delete data[ref.path]; notify(); }
 export function onSnapshot(q, cb){
   const l = {q, cb};
   listeners.add(l);
-  setTimeout(() => { if(listeners.has(l)) cb({docs: run(q)}); }, 8);
+  /* Första svaret räknas som en hämtning; ändringar därefter skickar Firestore
+     som små tillägg, så de räknas inte här. */
+  setTimeout(() => { if(listeners.has(l)){ const docs = run(q); count(q.coll, docs.length); cb({docs}); } }, 8);
   return () => listeners.delete(l);
 }
 

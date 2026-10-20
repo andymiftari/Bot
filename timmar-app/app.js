@@ -456,8 +456,44 @@ async function loadMonthsFor(yms){
 const loadCosts = async () => { S.costs=await Store.list("costs"); };
 /* Projektfliken. Superadmin ser allas timmar och alla kostnader. En arbetare
    ser bara sina egna timmar – andras får hen inte läsa. */
+/* Projekt, Statistik och Arkiv räknar på alla tidrapporter och kostnader.
+   I stället för att hämta hela historiken från servern varje gång fliken
+   öppnas – den växer med varje månad – hålls en lyssning öppen. Firestore
+   visar då det som redan finns i telefonen direkt och skickar bara det som
+   ändrats sedan sist. Lyssningen stängs vid utloggning (stopLive). */
+const live={};
+function liveColl(coll, apply){
+  if(live[coll]) return live[coll].ready;
+  const L=live[coll]={unsub:null};
+  L.ready=new Promise(function(resolve, reject){
+    let first=true;
+    try{
+      L.unsub=onSnapshot(collection(db,coll), function(snap){
+        apply(snap.docs.map(d=>Object.assign({_id:d.id, id:d.id}, d.data())));
+        if(first){ first=false; resolve(); } else scheduleRender();
+      }, function(err){
+        delete live[coll];
+        if(first){ first=false; reject(err); } else console.error(coll, err);
+      });
+    }catch(err){ delete live[coll]; reject(err); }
+  });
+  return L.ready;
+}
+function stopLive(){
+  Object.keys(live).forEach(function(k){ try{ live[k].unsub && live[k].unsub(); }catch(e){} delete live[k]; });
+}
 async function loadProjectData(){
-  if(isAdmin()){ await loadEveryMonth(); await loadCosts(); }
+  if(isAdmin()){
+    try{
+      await Promise.all([
+        liveColl("months", rows=>{ S.everyMonth=rows; }),
+        liveColl("costs", rows=>{ S.costs=rows; })
+      ]);
+    }catch(e){
+      /* Går lyssningen inte att starta hämtas allt en gång, som förut. */
+      console.error(e); await loadEveryMonth(); await loadCosts();
+    }
+  }
   else { S.everyMonth=S.months.slice(); S.costs=[]; }
 }
 
@@ -5600,6 +5636,7 @@ async function boot(){
   onAuthStateChanged(auth, async function(user){
     if(S.creating) return;              /* uppstarten sköter inloggningen själv */
     if(!user){
+      stopLive(); S.everyMonth=[]; S.costs=[];
       S.me=null; S.targetEmp=null; S.months=[]; S.approvals=[]; S.busy=false;
       S.pendingUser=null; S.fixErr=""; S.fixMsg="";
       if(S.phase!=="onboarding") S.phase="ready";
