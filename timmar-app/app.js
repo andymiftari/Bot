@@ -3322,6 +3322,32 @@ async function sendSupport(){
   else supportModal("Kunde inte skicka just nu. Kontrollera nätet och försök igen.","");
 }
 
+/* Oväntade fel i appen läggs som en kort rapport i Inkorg, så att
+   superadmin får veta om något går sönder ute hos en montör – inte bara om
+   personen själv hör av sig. Högst tre rapporter per besök, aldrig samma fel
+   två gånger, och inget brus från nätet eller webbläsaren. Rapporten har
+   samma form som en supportförfrågan, så reglerna behöver inte ändras. */
+const errSent=new Set();
+function reportError(kind, err){
+  try{
+    const msg=String((err&&err.message)||err||"okänt fel");
+    if(/ResizeObserver loop|^Script error\.?$|AbortError|Load failed|Failed to fetch|NetworkError|network-request-failed/i.test(msg)) return;
+    const stack=String((err&&err.stack)||"").split("\n").slice(0,6).join("\n");
+    const key=msg+"|"+(stack.split("\n")[1]||"");
+    if(errSent.has(key) || errSent.size>=3) return;
+    errSent.add(key);
+    const sid=String(Date.now())+"-"+uid();
+    Store.set("support/"+sid, {id:sid, done:false, name:"Automatisk felrapport", contact:"",
+      message:(kind+": "+msg+(stack?"\n\n"+stack:"")).slice(0,1900),
+      page:S.tab+(S.projSel?" / projekt":""), role:(S.me&&S.me.role)||"utloggad",
+      account:(S.me&&S.me.username)||"", project:firebaseConfig.projectId||"",
+      app:cfg("appName","Ellingesmide"), version:APP_VERSION, at:new Date().toISOString(),
+      agent:(navigator.userAgent||"").slice(0,180)}).catch(function(){});
+  }catch(e){ /* en felrapport får aldrig själv orsaka fel */ }
+}
+window.addEventListener("error", function(ev){ reportError("Fel", ev.error||ev.message); });
+window.addEventListener("unhandledrejection", function(ev){ reportError("Ohanterat fel", ev.reason); });
+
 /* ============================ inloggning & uppstart ============================ */
 function viewSetup(){
   return '<div class="setup">'
@@ -4413,7 +4439,11 @@ document.addEventListener("click", function(ev){
     lastTap.set(key, now);
     if(lastTap.size>200) lastTap.clear();
   }
-  Promise.resolve(onAction(ev, t)).catch(function(e){ console.error(e); });
+  Promise.resolve(onAction(ev, t)).catch(function(e){
+    console.error(e);
+    toast("Något gick fel – felet är rapporterat. Försök igen.");
+    reportError("Knappen "+t.dataset.act, e);
+  });
 });
 async function onAction(ev, t){
   const act=t.dataset.act;

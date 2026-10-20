@@ -207,6 +207,26 @@ const tests = {
     await desk.close(); await ctx.close();
   },
 
+  "fel rapporteras till Inkorg, högst tre": async () => {
+    const {p, ctx} = await open();
+    await p.evaluate(() => {
+      const boom = m => setTimeout(() => { throw new Error(m); });
+      boom("testfel A"); boom("testfel A");             // samma fel två gånger
+      boom("testfel B"); boom("testfel C"); boom("testfel D");
+      Promise.reject(new Error("Failed to fetch"));       // nätbrus ska inte rapporteras
+    });
+    await p.waitForTimeout(600);
+    p.errors.length = 0;                                  // felen var avsiktliga
+    const d = await data(p);
+    const reps = Object.keys(d).filter(k => k.startsWith("support/") && d[k].name === "Automatisk felrapport").map(k => d[k].message);
+    check(reps.length === 3, "väntade 3 rapporter, fick " + reps.length);
+    check(reps.filter(m => m.includes("testfel A")).length === 1, "samma fel rapporterades två gånger");
+    check(!reps.some(m => m.includes("Failed to fetch")), "nätbrus rapporterades");
+    await tab(p, "inkorg");
+    check((await p.content()).includes("Automatisk felrapport"), "rapporten syns inte i Inkorg");
+    await ctx.close();
+  },
+
   "inloggning som arbetare": async () => {
     const {p, ctx} = await open();
     await p.click('[data-act="memenu"]'); await p.waitForTimeout(250);
