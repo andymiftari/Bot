@@ -42,6 +42,7 @@ stoppas av artifaktens ram.
 | 2026-10-20 | Ny funktion | ”Skapa projekt av offerten”: på en skickad/accepterad offert skapas projektet med ett tryck – nästa projektkod (P-1047 → P-1048), kund, adress, timpris, kontakt och hela kalkylen (pris, timmar, arbete, material, resor), kopplat till offerten. Offerten markeras accepterad, projektet öppnas, och offerten visar sedan ”Öppna projektet” i stället. Nytt test (14 st). | 1db72e9 |
 | 2026-10-20 | Ny funktion | **”Att göra” i varje projekt**: delad checklista (beställa material, boka lift, ta mått). Alla med profil lägger till och bockar av, det syns vem och när, listan är live mellan telefoner. Ny samling `projtasks` med regler: arbetare får bara bocka av i eget namn, aldrig ändra texten, bara ta bort egna punkter (17 regeltester + de 34 tidigare). Med i dagliga säkerhetskopian. Regeltesterna sparade i `demo/regler/`. Nytt test i sviten (15 st). **Måste ut med reglerna (deployflödet tar dem).** | 680410a |
 | 2026-10-20 | Ny funktion | ”Kopiera till ny” på en offert: ett liknande jobb får samma rader, rubrik, inledning och villkor – nytt nummer, dagens datum, utkast och tom kund. Nytt test (16 st). | e658c84 |
+| 2026-10-20 | Ny funktion | Kundregister: kundfältet i offerter och projekt föreslår tidigare kunder medan man skriver; väljer man en hämtas kontaktperson, adress, e-post och telefon från senaste offerten – bara till tomma fält. Nytt test (17 st). | (denna) |
 
 ## Idéer att ta sig an
 

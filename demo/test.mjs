@@ -298,6 +298,21 @@ const tests = {
     await ctx.close();
   },
 
+  "kundregister fyller i kontaktuppgifter": async () => {
+    const {p, ctx} = await open();
+    await tab(p, "kalkyl");
+    await p.click('[data-act="offnew"]'); await p.waitForTimeout(400);
+    const opts = await p.$$eval("#kunder option", o => o.map(x => x.value));
+    check(opts.includes("HSB Södra") && opts.includes("Nilsson Bygg AB"), "förslagen saknar kunder: " + opts.join(", "));
+    await p.fill("#k-phone", "070-111 11 11");
+    await p.fill("#k-cname", "hsb södra"); await p.press("#k-cname", "Tab"); await p.waitForTimeout(300);
+    check(await p.$eval("#k-contact", e => e.value) === "Lena Ström", "kontaktpersonen fylldes inte i");
+    check((await p.$eval("#k-addr", e => e.value)).includes("Malmö"), "adressen fylldes inte i");
+    check(await p.$eval("#k-phone", e => e.value) === "070-111 11 11", "telefonen man skrivit skrevs över");
+    check(!p.errors.length, p.errors.join(" | "));
+    await ctx.close();
+  },
+
   "inloggning som arbetare": async () => {
     const {p, ctx} = await open();
     await p.click('[data-act="memenu"]'); await p.waitForTimeout(250);

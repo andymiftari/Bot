@@ -1986,7 +1986,8 @@ function projModal(pid){
     + '<label class="fld"><span class="eyebrow">Projektnamn</span><input id="p-name" type="text" value="'+esc(p.name)+'" placeholder="Räcken Kv. Smedjan"></label>'
     + '<div class="form even"><label class="fld"><span class="eyebrow">Projektkod / nummer</span><input id="p-kod" type="text" value="'+esc(p.kod||"")+'" placeholder="P-104"></label>'
     + '<label class="fld"><span class="eyebrow">Timpris (kr)</span><input id="p-rate" type="text" inputmode="numeric" value="'+esc(p.rate||"")+'" placeholder="850"></label></div>'
-    + '<label class="fld"><span class="eyebrow">Kund</span><input id="p-kund" type="text" value="'+esc(p.kund||"")+'" placeholder="Byggbolaget AB"></label>'
+    + '<label class="fld"><span class="eyebrow">Kund</span><input id="p-kund" type="text" list="kunder" autocomplete="off" value="'+esc(p.kund||"")+'" placeholder="Byggbolaget AB"></label>'
+    + customerList()
     + '<label class="fld"><span class="eyebrow">Arbetsplats / adress</span><input id="p-adress" type="text" value="'+esc(p.adress||"")+'"></label>'
     + '<label class="fld"><span class="eyebrow">Status</span><select id="p-status">'
     + Object.keys(PSTATUS).map(k=>'<option value="'+k+'"'+((p.status||"aktiv")===k?" selected":"")+'>'+PSTATUS[k]+'</option>').join("")+'</select></label>'
@@ -3772,7 +3773,8 @@ function viewOffer(){
     + filesPanel(o.id?"offer:"+o.id:"offer:", "Bilagor till förfrågan", "Ritningar, foton, PDF och Excel från kunden, även stora filer – AI:n läser dem när du räknar. Syns inte i offerten.")
     + '</div>'
     + '<div class="panel" style="padding:14px"><h3 style="margin-bottom:8px">Kund</h3><div class="stack">'
-    + fld("k-cname","Namn eller företag",cu.name)
+    + fld("k-cname","Namn eller företag",cu.name,"text",' list="kunder" autocomplete="off"')
+    + customerList()
     + fld("k-contact","Kontaktperson",cu.contact)
     + fld("k-addr","Adress",cu.address,"area",2)
     + fld("k-email","E-post",cu.email,"email",' autocapitalize="none" spellcheck="false"')
@@ -3808,6 +3810,32 @@ function viewOffer(){
       : "Mejlprogrammet öppnas med ämne och text ifyllt. Bifoga PDF:en du laddat ner innan du skickar.")+'</p>'
     + '</div></div></div>';
 }
+/* Kundregistret är de kunder som redan finns i offerter och projekt. Fältet
+   för kundnamn föreslår dem medan man skriver, och väljer man en fylls
+   kontaktuppgifterna i från den senaste offerten till kunden – bara i tomma
+   fält, så att inget man skrivit skrivs över. */
+function customers(){
+  const m=new Map();
+  (S.offers||[]).slice().sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))).forEach(function(o){
+    const c=o.customer||{}, n=String(c.name||"").trim(); if(!n) return;
+    const k=n.toLowerCase(); if(!m.has(k)) m.set(k, {name:n, contact:c.contact||"", address:c.address||"", email:c.email||"", phone:c.phone||""});
+  });
+  (S.projects||[]).forEach(function(p){ const n=String(p.kund||"").trim(); if(n && !m.has(n.toLowerCase())) m.set(n.toLowerCase(), {name:n}); });
+  return m;
+}
+const customerList = () => '<datalist id="kunder">'
+  + [...customers().values()].sort((a,b)=>a.name.localeCompare(b.name,"sv")).map(c=>'<option value="'+esc(c.name)+'">').join("")+'</datalist>';
+function fillCustomer(){
+  const name=String((document.getElementById("k-cname")||{}).value||"").trim();
+  const c=customers().get(name.toLowerCase()); if(!c) return;
+  let n=0;
+  [["k-contact","contact"],["k-addr","address"],["k-email","email"],["k-phone","phone"]].forEach(function(f){
+    const el=document.getElementById(f[0]);
+    if(el && !el.value.trim() && c[f[1]]){ el.value=c[f[1]]; dirty.set(f[0], {value:el.value, checked:false}); n++; }
+  });
+  if(n){ offerLive(); toast("Kontaktuppgifterna är hämtade från tidigare offert."); }
+}
+
 /* Offert → projekt. Ett accepterat jobb ska inte behöva skrivas in en gång
    till: kund, adress, timpris och hela kalkylen följer med, och projektet
    kopplas till offerten så att budgetstapeln och Statistik fungerar direkt. */
@@ -5757,6 +5785,7 @@ document.addEventListener("change", async function(ev){
     return;
   }
   if(ev.target.id==="f-type"){ syncProjField(); return; }
+  if(ev.target.id==="k-cname"){ fillCustomer(); return; }
   if(ev.target.id==="f-proj"){ if(ev.target.value) S.lastProj=ev.target.value; return; }
   if(ev.target.id==="sel-emp"){ if(isAdmin()){ await selectEmployee(ev.target.value); render(); } return; }
   if(ev.target.id==="kor-veh"){ S.korVeh=ev.target.value; render(); return; }
