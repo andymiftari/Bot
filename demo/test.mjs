@@ -188,6 +188,20 @@ const tests = {
     await ctx.close();
   },
 
+  "Mer-knappen för sällan använda flikar": async () => {
+    const {p, ctx} = await open();
+    const shown = () => p.$$eval(".tab", t => t.filter(x => getComputedStyle(x).display !== "none").map(x => x.dataset.v || "mer"));
+    check(!(await shown()).includes("personal"), "Personal syns trots stängd Mer");
+    await p.click('[data-act="moretabs"]'); await p.waitForTimeout(200);
+    check((await shown()).includes("personal"), "Personal syns inte efter Mer");
+    await tab(p, "personal");
+    await p.click('[data-act="moretabs"]'); await p.waitForTimeout(200);
+    check((await shown()).includes("personal"), "fliken man står på försvann");
+    const desk = await browser.newPage({viewport:{width:1280, height:800}}); await desk.goto(BASE); await desk.waitForSelector(".tab");
+    check(!(await desk.$eval('[data-act="moretabs"]', e => getComputedStyle(e).display !== "none")), "Mer syns på dator");
+    await desk.close(); await ctx.close();
+  },
+
   "inloggning som arbetare": async () => {
     const {p, ctx} = await open();
     await p.click('[data-act="memenu"]'); await p.waitForTimeout(250);

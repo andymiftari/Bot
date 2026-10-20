@@ -760,6 +760,9 @@ const tidText = iso => {
 };
 
 /* ============================ topbar ============================ */
+/* Flikar som används sällan. På en smal telefon ligger de bakom "Mer" så att
+   topplisten inte tar halva skärmen; den man står på syns alltid. */
+const RARE_TABS = /^(arkiv|personal|listor|inkorg|utseende)$/;
 function topbar(){
   const me=S.me;
   /* Körjournalen ligger direkt efter tidrapporten och finns för alla roller. */
@@ -777,8 +780,10 @@ function topbar(){
     + '<span><span class="nm">'+esc(me.name)+'</span> <span class="note">· '+esc(roleLabel(me.role))+'</span></span>'
     + '<span class="eyebrow">Konto</span></button>'
     + '</div>'
-    + '<div class="tabs" role="tablist">'
-    + tabs.map(t=>'<button class="tab" role="tab" aria-selected="'+(S.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+esc(t[1])+'</button>').join("")
+    + '<div class="tabs'+(S.moreTabs?' open':'')+'" role="tablist">'
+    + tabs.map(t=>'<button class="tab'+(RARE_TABS.test(t[0])?' rare':'')+'" role="tab" aria-selected="'+(S.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+esc(t[1])+'</button>').join("")
+    + (tabs.some(t=>RARE_TABS.test(t[0]))
+       ? '<button class="tab moretab" data-act="moretabs" aria-expanded="'+(!!S.moreTabs)+'">'+(S.moreTabs?'Färre':'Mer')+'</button>' : '')
     + '</div><div class="temper" aria-hidden="true"></div>'
     + (S.offline?'<div class="banner offline" role="status"><span class="dot" aria-hidden="true"></span>'
       + '<span><b>Ingen anslutning.</b> Det du sparar ligger kvar i telefonen och skickas när nätet är tillbaka – du behöver inte spara igen.</span></div>':'');
@@ -4397,7 +4402,7 @@ document.addEventListener("change", markDirty, true);
    och knappar som bara lägger till en tom rad i ett formulär får tryckas hur
    snabbt som helst. (Att två snabba sparningar inte skriver över varandra
    sköter saveDay, som uppdaterar listan innan den väntar på databasen.) */
-const FREE_ACTS = /^(prev|next|today|view|preset|pp|tab|close|ovl|noop|lonprev|lonnext|lonnow|inbf|arkf|memenu|offback|backproj|gotoemp|gologin|goonboarding|forgot|offrowadd|lradd|lstadd|scretake|photoview|open|openproj|openarkproj)$/;
+const FREE_ACTS = /^(prev|next|today|view|preset|pp|tab|moretabs|close|ovl|noop|lonprev|lonnext|lonnow|inbf|arkf|memenu|offback|backproj|gotoemp|gologin|goonboarding|forgot|offrowadd|lradd|lstadd|scretake|photoview|open|openproj|openarkproj)$/;
 const lastTap=new Map();
 document.addEventListener("click", function(ev){
   const t=ev.target.closest("[data-act]");
@@ -4416,6 +4421,7 @@ async function onAction(ev, t){
   if(act==="noop") return;
   if(/^(off|lr)/.test(act) && S.tab==="kalkyl" && await handleKalkyl(act, t)) return;
   if(act==="doupdate"){ location.reload(); return; }
+  if(act==="moretabs"){ S.moreTabs=!S.moreTabs; render(); return; }
   if(act==="ovl"){ if(ev.target===t) closeModal(); return; }
   if(act==="close"){ closeModal(); return; }
   if(act==="support"){ supportModal("",""); return; }
