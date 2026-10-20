@@ -26,7 +26,7 @@ stoppas av artifaktens ram.
 | 2026-10-20 | Design | Månadskalendern på mobil: projektkoden klipptes till en bit av en bokstav i varje post och såg ut som skräptecken. Under 620 px visas bara timmarna, centrerat; färgen visar typ och hela posten syns i dagsvyn. | bb0f431 |
 | 2026-10-20 | Stabilitet/UX | Offline-läge syns: gul list ”Ingen anslutning – det du sparar skickas när nätet är tillbaka, du behöver inte spara igen” och en bekräftelse när nätet kommer tillbaka. Demo: skylten är en smal list överst i stället för att täcka innehåll. | 3f35695 |
 | 2026-10-20 | Ny funktion | ”Samma som tis 20 okt · 8 h · P-1042” i dagsformuläret: på en tom dag kopieras arbetsposterna (projekt, timmar, notering) från senaste arbetsdagen inom två veckor med ett tryck. Frånvaro kopieras aldrig. | 2c942de |
-| 2026-10-20 | Hastighet | Projekt/Statistik/Arkiv hämtade alla tidrapporter och kostnader i hela historiken från servern varje gång fliken öppnades (växer varje månad). Nu en live-lyssning: cachen visas direkt och servern skickar bara ändringar. Mätt i demon: 5×(Projekt+Statistik) läste 100→10 tidrapporter och 60→6 kostnader. Stängs vid utloggning. (Ritning mätt: 6–15 ms per flik även med 10 anställda × 2 år – inget att vinna där.) | (denna) |
+| 2026-10-20 | Hastighet | Projekt/Statistik/Arkiv hämtade alla tidrapporter och kostnader i hela historiken från servern varje gång fliken öppnades (växer varje månad). Nu en live-lyssning: cachen visas direkt och servern skickar bara ändringar. Mätt i demon: 5×(Projekt+Statistik) läste 100→10 tidrapporter och 60→6 kostnader. Stängs vid utloggning. (Ritning mätt: 6–15 ms per flik även med 10 anställda × 2 år – inget att vinna där.) | 1c7d4c5 |
 
 ## Idéer att ta sig an
 
