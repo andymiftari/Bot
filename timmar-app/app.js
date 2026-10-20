@@ -298,6 +298,15 @@ const S = {
   projSel:null, projPeriod:"month", lastProj:null, unsubs:[], installEvt:null,
   offers:[], off:null, offSel:null, firm:{}
 };
+/* Utan nät sparar Firestore i telefonen och skickar sedan. Det ska synas,
+   annars tror den som står i en källare att inget sparades och trycker igen. */
+S.offline = typeof navigator!=="undefined" && navigator.onLine===false;
+window.addEventListener("offline", function(){ S.offline=true; if(S.me) scheduleRender(); });
+window.addEventListener("online", function(){
+  if(!S.offline) return;
+  S.offline=false;
+  if(S.me){ scheduleRender(); toast("Ansluten igen – det du sparade skickas nu."); }
+});
 /* QR-koderna i bilarna pekar på #kor=<bilens id>. Adressen läses av innan
    inloggningen, så att rätt bil öppnas så fort föraren är inne. */
 function parseKorHash(){
@@ -724,7 +733,9 @@ function topbar(){
     + '</div>'
     + '<div class="tabs" role="tablist">'
     + tabs.map(t=>'<button class="tab" role="tab" aria-selected="'+(S.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+'</button>').join("")
-    + '</div><div class="temper" aria-hidden="true"></div>';
+    + '</div><div class="temper" aria-hidden="true"></div>'
+    + (S.offline?'<div class="banner offline" role="status"><span class="dot" aria-hidden="true"></span>'
+      + '<span><b>Ingen anslutning.</b> Det du sparar ligger kvar i telefonen och skickas när nätet är tillbaka – du behöver inte spara igen.</span></div>':'');
 }
 
 /* ============================ tidrapport ============================ */

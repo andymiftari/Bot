@@ -24,9 +24,11 @@ stoppas av artifaktens ram.
 | 2026-10-20 | Ny funktion | Sökruta i projektlistan: filtrerar på kod, namn, kund och adress medan man skriver (flera ord = alla måste finnas), visar ”2 av 5 projekt”, summaraden räknar träffarna, Esc/Rensa tömmer. Demo: rimligare offertbelopp. | 5b0644b |
 | 2026-10-20 | Stabilitet | Tidsposter kunde försvinna: två snabba ändringar samma dag (eller en som väntar på segt nät) utgick från samma gamla lista och skrev över varandra – testat: före ”2,1”, efter ”2,3,1”. saveDay uppdaterar nu listan innan den väntar på databasen. Dessutom ignoreras dubbeltryck (samma knapp inom 400 ms), utom för bläddring och flikar. | f6a2e5b |
 | 2026-10-20 | Design | Månadskalendern på mobil: projektkoden klipptes till en bit av en bokstav i varje post och såg ut som skräptecken. Under 620 px visas bara timmarna, centrerat; färgen visar typ och hela posten syns i dagsvyn. | bb0f431 |
+| 2026-10-20 | Stabilitet/UX | Offline-läge syns: gul list ”Ingen anslutning – det du sparar skickas när nätet är tillbaka, du behöver inte spara igen” och en bekräftelse när nätet kommer tillbaka. Demo: skylten är en smal list överst i stället för att täcka innehåll. | (denna) |
 
 ## Idéer att ta sig an
 
 - `window.print` i körjournalen fungerar i appen men inte i demon – överväg en PDF-export i stället.
 - Säkerhetshuvuden i `timmar-app/_headers` (gå igenom vad som redan finns).
 - Svenska datum och tal överallt i exporter.
+- Körjournalens resetabell på mobil: datumet bryts över två rader.

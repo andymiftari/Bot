@@ -54,17 +54,18 @@ patch("index.html", [
   ['<link rel="preconnect" href="https://www.gstatic.com" crossorigin>\n', ""],
   ['<link rel="stylesheet" href="styles.css">', `<link rel="stylesheet" href="styles.css">
 <style>
-.demo-flag{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));z-index:70;
-  display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border-radius:999px;
-  background:var(--straw);color:#1D2A33;font:600 12px/1.2 var(--f-body);box-shadow:var(--shadow)}
-.demo-flag button{font:inherit;border:0;border-radius:999px;padding:5px 10px;background:#1D2A33;color:#F8F9F8;cursor:pointer;min-height:28px}
+.demo-flag{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px 12px;
+  padding-block:5px;padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));
+  background:var(--straw);color:#1D2A33;font:600 12px/1.3 var(--f-body)}
+.demo-flag button{font:inherit;border:0;border-radius:999px;padding:3px 10px;background:#1D2A33;color:#F8F9F8;cursor:pointer;min-height:26px}
 @media print{.demo-flag{display:none}}
 </style>`],
-  ['<script type="module" src="app.js"></script>', `<div class="demo-flag" role="note">
+  ['<div class="wrap" id="app">', `<div class="demo-flag" role="note">
   <span title="Sandbox ${appVersion}, byggd ${built}. All data är påhittad och sparas bara i din webbläsare.">Demo · testdata · ${built.slice(5)}</span>
   <button type="button" id="demo-reset" title="Lägg tillbaka testdatan som den var från början">Börja om</button>
 </div>
-<script type="module">
+<div class="wrap" id="app">`],
+  ['<script type="module" src="app.js"></script>', `<script type="module">
 import { demoReset } from "./fakefb.js";
 /* Artifakten visar inga confirm()-rutor – andra trycket bekräftar. */
 const rb = document.getElementById("demo-reset");
