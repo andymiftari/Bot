@@ -47,7 +47,12 @@ async function open(opts = {}){
   return {p, ctx};
 }
 async function closeModal(p){ if(await p.$("#modal-root .ovl")){ await p.keyboard.press("Escape"); await p.waitForTimeout(150); } }
-async function tab(p, t){ await p.click('.tab[data-v="' + t + '"]'); await p.waitForTimeout(450); await closeModal(p); }
+async function tab(p, t){
+  const sel = '.tab[data-v="' + t + '"]';
+  // på telefon kan fliken ligga bakom "Mer"
+  if(!(await p.$eval(sel, e => getComputedStyle(e).display !== "none"))) await p.click('[data-act="moretabs"]');
+  await p.click(sel); await p.waitForTimeout(450); await closeModal(p);
+}
 const data = p => p.evaluate(() => JSON.parse(localStorage.getItem("ellingesmide-demo-v3")));
 async function tomorrowWorkday(p){ return p.evaluate(() => { const d=new Date(); d.setDate(d.getDate()+1); while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()+1); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }); }
 function check(cond, msg){ if(!cond) throw new Error(msg); }
