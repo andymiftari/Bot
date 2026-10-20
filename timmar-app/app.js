@@ -881,6 +881,26 @@ function projectOptions(sel){
     + S.projects.filter(p=>p.status!=="avslutad")
         .map(p=>'<option value="'+p.id+'"'+(p.id===sel?" selected":"")+'>'+esc((p.kod?p.kod+" · ":"")+p.name)+'</option>').join("");
 }
+/* Senaste dag före ds (högst två veckor bakåt) med arbetad tid – de flesta
+   jobbar på samma projekt flera dagar i rad. Frånvaro kopieras aldrig. */
+function prevWorkDay(empId, ds){
+  const d=fromKey(ds);
+  for(let i=1;i<=14;i++){
+    d.setDate(d.getDate()-1);
+    const k=dkey(d), work=entriesFor(empId,k).filter(e=>!typeOf(e.type).abs);
+    if(work.length) return {ds:k, entries:work};
+  }
+  return null;
+}
+function copyPrevButton(emp, ds, entries){
+  if(entries.length) return "";
+  const prev=prevWorkDay(emp.id, ds); if(!prev) return "";
+  const pd=fromKey(prev.ds), h=prev.entries.reduce((a,e)=>a+(+e.hours||0),0);
+  const codes=prev.entries.map(e=>e.projectId?projLabel(e.projectId):"").filter((c,i,a)=>c&&a.indexOf(c)===i);
+  return '<button class="btn sm copyprev" data-act="copyprev" data-d="'+ds+'" data-f="'+prev.ds+'">'
+    + 'Samma som '+DAYS_S[isoDow(pd)].toLowerCase()+' '+pd.getDate()+' '+MONTHS[pd.getMonth()].slice(0,3)
+    + ' <span class="note">· '+fmt(h)+' h'+(codes.length?' · '+esc(codes.slice(0,2).join(", "))+(codes.length>2?" …":""):"")+'</span></button>';
+}
 function dayEditor(emp, ds){
   const d=fromKey(ds), wk=wkey(d);
   const entries=entriesFor(emp.id, ds);
@@ -914,6 +934,7 @@ function dayEditor(emp, ds){
       + (noProj?'<p class="note" style="grid-column:1/-1">Inga projekt upplagda ännu. En superadmin skapar dem under fliken Projekt.</p>':'')
       + '</div>'
       + '<div class="quick"><span class="eyebrow">Snabbval</span>'
+      + copyPrevButton(emp, ds, entries)
       + [["arbete",8,"8 h"],["arbete",4,"4 h"],["overtid",2,"2 h övertid"],["sjuk",8,"Sjuk hel dag"],["semester",8,"Semester"]]
           .map(q=>'<button class="btn sm" data-act="quick" data-d="'+ds+'" data-t="'+q[0]+'" data-h="'+q[1]+'">'+q[2]+'</button>').join("")
       + '</div>';
@@ -5202,6 +5223,18 @@ async function onAction(ev, t){
     const cur=entriesFor(emp.id, ds).slice();
     cur.push({id:uid(), type:type, hours:r2(hours), note:note, projectId:pid});
     await guard(()=>saveDay(emp.id, ds, cur));
+    render(); if(wasModal) dayModal(emp, ds);
+    return;
+  }
+  if(act==="copyprev"){
+    const ds=t.dataset.d, from=t.dataset.f, wasModal=inModal();
+    if(isLocked(emp.id, ds)) return;
+    const copies=entriesFor(emp.id, from).filter(e=>!typeOf(e.type).abs)
+      .map(e=>({id:uid(), type:e.type, hours:r2(+e.hours||0), note:e.note||"", projectId:e.projectId||""}));
+    if(!copies.length) return;
+    const cur=entriesFor(emp.id, ds).slice().concat(copies);
+    const last=copies.filter(e=>e.projectId).pop(); if(last) S.lastProj=last.projectId;
+    await guard(()=>saveDay(emp.id, ds, cur), copies.length===1?"Posten är kopierad.":copies.length+" poster är kopierade.");
     render(); if(wasModal) dayModal(emp, ds);
     return;
   }

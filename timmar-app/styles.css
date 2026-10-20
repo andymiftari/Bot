@@ -278,6 +278,11 @@ select.inv.inv-fakturerad{border-color:var(--ok)}
 .form.even{grid-template-columns:1fr 1fr}
 @media (max-width:520px){.form.even{grid-template-columns:1fr}}
 .quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
+/* "Samma som förra arbetsdagen" – det vanligaste valet, därför först och tydligast */
+.quick .copyprev{flex:1 1 100%;justify-content:flex-start;text-align:left;white-space:normal;
+  background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+.quick .copyprev:hover:not(:disabled){background:var(--accent-soft);border-color:var(--ink)}
+.quick .copyprev .note{color:var(--ink-2)}
 .toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--inv-ink);padding:10px 16px;z-index:80;box-shadow:var(--shadow);max-width:92vw;font-size:13px}
 
 /* ---------- login / setup ---------- */
