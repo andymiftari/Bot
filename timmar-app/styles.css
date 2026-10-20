@@ -464,6 +464,18 @@ h2{font-size:26px} h3{font-size:18px}
   .tabs{flex-wrap:wrap;overflow-x:visible;row-gap:0;column-gap:2px}
   .tab{padding:8px 12px 10px}
 }
+/* På en smal telefon är topplisten det första man ser på varje flik. Den
+   hålls kompakt: kontot blir bara initialerna på samma rad som namnet (hela
+   namnet står i knappens etikett), och flikarna tätas lite. */
+@media (max-width:520px){
+  .topbar{gap:10px;padding-block:12px 4px}
+  .topbar .brand h1{font-size:20px}
+  .topbar .userchip{padding:4px;min-height:40px;border-radius:999px}
+  .topbar .userchip > span:not(.avatar){display:none}
+  .topbar .avatar{width:32px;height:32px;flex-basis:32px;font-size:13px}
+  .tab{padding:7px 10px 9px;font-size:14px}
+  .tab[aria-selected="true"]::after{left:10px;right:10px}
+}
 .temper{height:4px;margin:0 calc(50% - 50vw) 18px;background:var(--temper)}
 .tab{color:var(--on-scale-2);border:0;border-radius:var(--r-ctl) var(--r-ctl) 0 0;
   padding:9px 14px 11px;flex:0 0 auto;font-weight:600;position:relative}

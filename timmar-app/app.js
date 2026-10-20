@@ -773,7 +773,7 @@ function topbar(){
     + '</div>'
     + (S.installEvt?'<button class="btn sm" data-act="install">Installera appen</button>':'')
     + (S.updateReady?'<button class="btn sm primary" data-act="doupdate" title="En ny version av appen finns">Uppdatera appen</button>':'')
-    + '<button class="userchip" data-act="memenu"><span class="avatar">'+esc(initials(me.name))+'</span>'
+    + '<button class="userchip" data-act="memenu" aria-label="Konto: '+esc(me.name)+'" title="'+esc(me.name)+' · '+esc(roleLabel(me.role))+'"><span class="avatar">'+esc(initials(me.name))+'</span>'
     + '<span><span class="nm">'+esc(me.name)+'</span> <span class="note">· '+esc(roleLabel(me.role))+'</span></span>'
     + '<span class="eyebrow">Konto</span></button>'
     + '</div>'

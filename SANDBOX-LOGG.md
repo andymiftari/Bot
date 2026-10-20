@@ -34,9 +34,11 @@ stoppas av artifaktens ram.
 | 2026-10-20 | Säkerhet | Flikarnas namn (Utseende & texter) sattes in i HTML utan escape – ett kapat supportkonto kunde köra kod hos alla. Rättat. XSS-svep i demon: skadlig kod i 484 textfält (namn, projekt, kunder, anteckningar, resor, kostnader, inställningar) genom alla flikar och flera fönster – före kördes den i flikarna, efter ingenstans. Serverfunktionerna granskade: kräver rätt roll, ingen åtgärd behövs. | 4463bb1 |
 | 2026-10-20 | Stabilitet | Testsvit `demo/test.mjs`: 10 tester (alla flikar utan fel, foton, sökning, kopiera förra dagen, snabba ändringar på segt nät, dubbeltryck, offline, svensk tid, XSS-svep, inloggning som arbetare). Visade att dubbeltrycksspärren också hindrar att ett dubbeltryck på ”Ta bort” går förbi ”Tryck igen”. | 99ec6af |
 | 2026-10-20 | Testbarhet | Demo: Kalkyl-fliken har firmauppgifter (påhittade nummer), tre offerter (utkast, skickad, accepterad – den accepterade kopplad till Balkongräcken) och en prislista, tidsnormer och regler under Lär upp AI:n, så hela offertflödet går att prova. Testdatan laddas om automatiskt (v3). | 1479be5 |
+| 2026-10-20 | Design | Kompaktare topplist på telefon (under 520 px): kontoknappen blir bara initialerna på samma rad som namnet (hela namnet i etiketten), flikarna lite tätare. Topplisten för admin: 287 → 230 px (36 % → 29 % av skärmen), 330 → 271 px på 360 px breda telefoner. | (denna) |
 
 ## Idéer att ta sig an
 
 - `window.print` i körjournalen fungerar i appen men inte i demon – överväg en PDF-export i stället.
 - Säkerhetshuvuden i `timmar-app/_headers` (gå igenom vad som redan finns).
 - Svenska datum och tal överallt i exporter.
+- Topplisten för admin har fortfarande fyra rader flikar på telefon – överväg en ”Mer”-meny för de flikar som används sällan (Listor, Inkorg, Utseende).
