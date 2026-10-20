@@ -1603,7 +1603,7 @@ function projectDetail(pid){
     + (admin&&p.rate?' · '+kr(p.rate)+'/h':'')+'</p>'
     + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">'+pStatusPill(p)
     + (admin?invSelect(p):'')
-    + (pStatus(p)==="avslutad"?'<span class="note">Avslutat'+(p.archivedAt?' '+esc(String(p.archivedAt).slice(0,10)):'')+' · ligger i arkivet</span>':'')+'</div>'
+    + (pStatus(p)==="avslutad"?'<span class="note">Avslutat'+(p.archivedAt?' '+esc(localDay(p.archivedAt)):'')+' · ligger i arkivet</span>':'')+'</div>'
     + (p.notes?'<p style="margin-top:8px">'+esc(p.notes)+'</p>':'')
     + (admin?(projQuote(p).total>0
         ? '<div style="margin-top:14px"><span class="eyebrow">Uppnått av offererat pris'+(projQuote(p).offerNr?' · offert '+esc(projQuote(p).offerNr):'')+'</span>'
@@ -2706,7 +2706,7 @@ function pendingFor(wk){
   const weekEnd=weekDates(wk)[6];
   return S.employees.filter(function(e){
     /* den som anställdes efter veckan ska inte påminnas om den */
-    if(e.createdAt && String(e.createdAt).slice(0,10) > weekEnd) return false;
+    if(e.createdAt && localDay(e.createdAt) > weekEnd) return false;
     const ap=S.lwApprovals.find(a=>a.empId===e.id) || {status:"utkast"};
     if(ap.status==="inskickad"||ap.status==="godkand") return false;
     const st=weekStats(e.id, wk, S.everyMonth.length?S.everyMonth:S.months);
@@ -3029,7 +3029,7 @@ function archivedProjectsPanel(){
     return '<tr><td><span class="code">'+esc(p.kod||"—")+'</span></td>'
       + '<td><b>'+esc(p.name)+'</b>'+(p.adress?'<div class="note">'+esc(p.adress)+'</div>':'')+'</td>'
       + '<td>'+esc(p.kund||"—")+'</td>'
-      + '<td class="num">'+esc(p.archivedAt?String(p.archivedAt).slice(0,10):"—")+'</td>'
+      + '<td class="num">'+esc(p.archivedAt?localDay(p.archivedAt):"—")+'</td>'
       + '<td>'+invSelect(p)+'</td>'
       + '<td class="r">'+fmt(h)+'</td>'
       + '<td class="r" style="white-space:nowrap"><button class="btn sm" data-act="openarkproj" data-p="'+esc(p.id)+'">Öppna</button> '
