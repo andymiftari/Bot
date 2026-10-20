@@ -10,6 +10,9 @@ först när en förbättring tas ut live.
 (`demo/fakefb.js`, `demo/seed.js`). Byggs med `node demo/build.mjs <utmapp>`.
 "Börja om" i hörnet (tryck två gånger) lägger tillbaka testdatan.
 
+**Testsvit:** `node demo/test.mjs` (eller `node demo/test.mjs sök xss` för vissa) bygger demon och kör
+alla kontroller i en riktig webbläsare med svensk tidszon. Körs varje varv.
+
 Begränsningar i demon: AI-kalkyl och AI-avläsning av mätaren svarar inte
 (inga serverfunktioner), nedladdningar (Excel, PDF), kamera och utskrift
 stoppas av artifaktens ram.
@@ -29,6 +32,7 @@ stoppas av artifaktens ram.
 | 2026-10-20 | Hastighet | Projekt/Statistik/Arkiv hämtade alla tidrapporter och kostnader i hela historiken från servern varje gång fliken öppnades (växer varje månad). Nu en live-lyssning: cachen visas direkt och servern skickar bara ändringar. Mätt i demon: 5×(Projekt+Statistik) läste 100→10 tidrapporter och 60→6 kostnader. Stängs vid utloggning. (Ritning mätt: 6–15 ms per flik även med 10 anställda × 2 år – inget att vinna där.) | 1c7d4c5 |
 | 2026-10-20 | Buggfix | **Fel tid och fel datum i körjournalen.** Tidsstämplar (UTC) visades och grupperades på sina första tecken: en resa 07:05 visades som 05:05 i Sverige, en resa efter midnatt fick gårdagens datum och en resa natten till den 1:a hamnade i fel månad (och fel milersättning). Testat med svensk tidszon. Nu localDay/localTime/stampText överallt (körjournal, Excel-export, foton, AI-exempel, påminnelser, arkiv). Resetabellen visar ”tis 20/10” på en rad. | 47d8dfd |
 | 2026-10-20 | Säkerhet | Flikarnas namn (Utseende & texter) sattes in i HTML utan escape – ett kapat supportkonto kunde köra kod hos alla. Rättat. XSS-svep i demon: skadlig kod i 484 textfält (namn, projekt, kunder, anteckningar, resor, kostnader, inställningar) genom alla flikar och flera fönster – före kördes den i flikarna, efter ingenstans. Serverfunktionerna granskade: kräver rätt roll, ingen åtgärd behövs. | 4463bb1 |
+| 2026-10-20 | Stabilitet | Testsvit `demo/test.mjs`: 10 tester (alla flikar utan fel, foton, sökning, kopiera förra dagen, snabba ändringar på segt nät, dubbeltryck, offline, svensk tid, XSS-svep, inloggning som arbetare). Visade att dubbeltrycksspärren också hindrar att ett dubbeltryck på ”Ta bort” går förbi ”Tryck igen”. | (denna) |
 
 ## Idéer att ta sig an
 
