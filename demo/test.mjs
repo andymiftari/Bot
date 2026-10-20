@@ -313,6 +313,27 @@ const tests = {
     await ctx.close();
   },
 
+  "fyll veckan som förra veckan": async () => {
+    const {p, ctx} = await open();
+    await p.selectOption("#sel-emp", "u-anna"); await p.waitForTimeout(500);
+    await p.click('[data-act="view"][data-v="week"]'); await p.waitForTimeout(500);
+    const btn = await p.$('[data-act="copyweek"]');
+    const todayIsWorkday = await p.evaluate(() => { const d = new Date().getDay(); return d > 0 && d < 6; });
+    if(!btn){ check(!todayIsWorkday, "knappen saknas fast Anna har tomma dagar"); await ctx.close(); return; }
+    const label = await btn.innerText();
+    await btn.click(); await p.waitForTimeout(800);
+    const d = await data(p);
+    const res = await p.evaluate(() => { const pad=n=>String(n).padStart(2,"0"), k=x=>x.getFullYear()+"-"+pad(x.getMonth()+1)+"-"+pad(x.getDate());
+      const t=new Date(), y=new Date(); y.setDate(y.getDate()-1); const a=new Date(t); a.setDate(a.getDate()-7);
+      return {today:k(t), lastWeek:k(a), tomorrow:(()=>{const x=new Date(); x.setDate(x.getDate()+1); return k(x);})()}; });
+    const day = ds => (((d["months/u-anna__" + ds.slice(0,7)] || {}).days || {})[ds] || []);
+    check(day(res.today).length > 0, "i dag fylldes inte (" + label + ")");
+    check(JSON.stringify(day(res.today).map(e => [e.projectId, e.hours])) === JSON.stringify(day(res.lastWeek).filter(e => !["sjuk","semester","vab"].includes(e.type)).map(e => [e.projectId, e.hours])), "i dag blev inte som samma dag förra veckan");
+    check(day(res.tomorrow).length === 0, "en framtida dag fylldes i");
+    check(!(await p.$('[data-act="copyweek"]')), "knappen står kvar när allt är ifyllt");
+    await ctx.close();
+  },
+
   "inloggning som arbetare": async () => {
     const {p, ctx} = await open();
     await p.click('[data-act="memenu"]'); await p.waitForTimeout(250);

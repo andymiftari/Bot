@@ -918,11 +918,25 @@ function dayRow(emp, ds){
     + '<span class="inline">'+inline+'</span>'
     + '<span class="rt"><b>'+fmt(st.total)+'</b><small>'+(st.ot?'varav ÖT '+fmt(st.ot):'h')+'</small></span></button>';
 }
+/* Dagar i veckan som kan fyllas som förra veckan: vardagar fram till i dag,
+   olåsta och tomma, där samma veckodag förra veckan har arbetad tid. */
+function copyWeekPlan(empId, wk){
+  const today=dkey(new Date());
+  return weekDates(wk).filter(ds=>isWorkday(ds) && ds<=today && !isLocked(empId, ds) && !entriesFor(empId, ds).length)
+    .map(function(ds){
+      const d=fromKey(ds); d.setDate(d.getDate()-7);
+      return {ds:ds, from:entriesFor(empId, dkey(d)).filter(e=>!typeOf(e.type).abs)};
+    }).filter(x=>x.from.length);
+}
 function calWeek(emp){
   const wk=wkey(S.cursor), st=weekStats(emp.id,wk), ap=approvalOf(emp.id,wk);
+  const plan=copyWeekPlan(emp.id, wk);
   return '<div class="panel"><div class="hd"><div><h3>Vecka '+wkNo(wk)+'</h3>'
     + '<span class="note num">'+weekSpan(wk)+' · '+fmt(st.worked)+' h rapporterat</span></div>'
-    + '<span class="pill '+STATUS[ap.status].cls+'">'+STATUS[ap.status].label+'</span></div>'
+    + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">'
+    + (plan.length?'<button class="btn sm" data-act="copyweek" data-w="'+wk+'" title="Kopierar förra veckans arbetsposter till de tomma dagarna fram till i dag">'
+        + 'Fyll '+plan.length+(plan.length===1?' dag':' dagar')+' som förra veckan</button>':'')
+    + '<span class="pill '+STATUS[ap.status].cls+'">'+STATUS[ap.status].label+'</span></div></div>'
     + '<div class="daylist">'+weekDates(wk).map(ds=>dayRow(emp,ds)).join("")+'</div></div>';
 }
 const calDay = emp => '<div class="panel">'+dayEditor(emp, dkey(S.cursor))+'</div>';
@@ -5487,6 +5501,16 @@ async function onAction(ev, t){
     await guard(()=>saveDay(emp.id, ds, cur));
     render(); if(wasModal) dayModal(emp, ds);
     return;
+  }
+  if(act==="copyweek"){
+    const plan=copyWeekPlan(emp.id, t.dataset.w); if(!plan.length) return;
+    let n=0;
+    for(const x of plan){
+      const copies=x.from.map(e=>({id:uid(), type:e.type, hours:r2(+e.hours||0), note:e.note||"", projectId:e.projectId||""}));
+      if(await guard(()=>saveDay(emp.id, x.ds, entriesFor(emp.id, x.ds).concat(copies)))) n++;
+    }
+    if(n) toast(n===1?"En dag är ifylld som förra veckan.":n+" dagar är ifyllda som förra veckan.");
+    render(); return;
   }
   if(act==="copyprev"){
     const ds=t.dataset.d, from=t.dataset.f, wasModal=inModal();
