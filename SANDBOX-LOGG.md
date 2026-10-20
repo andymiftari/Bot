@@ -23,7 +23,7 @@ stoppas av artifaktens ram.
 | 2026-10-20 | Säkerhet | Främling med eget Firebase-konto kunde ge sig själv en profil och läsa projekt, kunder, timpriser och bilar; alla inloggade kunde läsa inköpspriserna i AI-kunskapen. Nu skapar bara superadmin profiler (appen skriver profilen som admin), allt kräver profil och offert/AI-kunskap kräver admin. Vecka i attest måste stämma med dokumentet. 34 regeltester i emulatorn. **Måste ut tillsammans: app + regler (deployflödet tar appen först).** | 8f53f44 |
 | 2026-10-20 | Ny funktion | Sökruta i projektlistan: filtrerar på kod, namn, kund och adress medan man skriver (flera ord = alla måste finnas), visar ”2 av 5 projekt”, summaraden räknar träffarna, Esc/Rensa tömmer. Demo: rimligare offertbelopp. | 5b0644b |
 | 2026-10-20 | Stabilitet | Tidsposter kunde försvinna: två snabba ändringar samma dag (eller en som väntar på segt nät) utgick från samma gamla lista och skrev över varandra – testat: före ”2,1”, efter ”2,3,1”. saveDay uppdaterar nu listan innan den väntar på databasen. Dessutom ignoreras dubbeltryck (samma knapp inom 400 ms), utom för bläddring och flikar. | f6a2e5b |
-| 2026-10-20 | Design | Månadskalendern på mobil: projektkoden klipptes till en bit av en bokstav i varje post och såg ut som skräptecken. Under 620 px visas bara timmarna, centrerat; färgen visar typ och hela posten syns i dagsvyn. | (denna) |
+| 2026-10-20 | Design | Månadskalendern på mobil: projektkoden klipptes till en bit av en bokstav i varje post och såg ut som skräptecken. Under 620 px visas bara timmarna, centrerat; färgen visar typ och hela posten syns i dagsvyn. | bb0f431 |
 
 ## Idéer att ta sig an
 
