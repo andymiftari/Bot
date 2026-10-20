@@ -6,7 +6,7 @@
    som en anlöpningsrand under topplisten. */
 :root{
   --ground:#E3E7E5; --surface:#F8F9F8; --surface-2:#EFF2F0; --sunken:#E6EAE8;
-  --ink:#1D2A33; --ink-2:#3A4954; --muted:#5D6B74;
+  --ink:#1D2A33; --ink-2:#3A4954; --muted:#5A6871;
   --line:#D2D9D6; --line-2:#B4BFBB; --hatch:rgba(29,42,51,.09);
   --inv-ink:#FFFFFF;
   --scale:#1D2A33; --on-scale:#E7ECEA; --on-scale-2:#9FB0BA;

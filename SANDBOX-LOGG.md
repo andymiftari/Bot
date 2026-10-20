@@ -38,6 +38,7 @@ stoppas av artifaktens ram.
 | 2026-10-20 | Design | ”Mer”-knapp på telefon: Arkiv, Personal, Listor, Inkorg och Utseende ligger bakom Mer (den flik man står på syns alltid; på dator syns allt). Topplisten för admin på telefon: 287 → 189 px totalt med förra varvet. Nytt test i sviten. | b96371e |
 | 2026-10-20 | Stabilitet | Automatiska felrapporter: oväntade fel läggs i Inkorg (fel, flik, version, telefon), högst tre per besök, aldrig samma två gånger, inget nätbrus. Knapptryck som misslyckas ger nu ”Något gick fel – felet är rapporterat” i stället för ingenting. Samma form som supportförfrågan, reglerna oförändrade. Exporterna granskade: tal skrivs som tal, ingen åtgärd. Nytt test (12 st). | d9c2ee9 |
 | 2026-10-20 | Ny funktion | Offertuppföljning: skickade offerter märks ”Går ut om 4 dagar” (gult), ”Utgången för 11 dagar sedan” (rött) eller ”Gäller till …”, och en rad ovanför listan påminner när någon går ut inom en vecka. Demo: två skickade offerter i det läget (testdata v4). Nytt test (13 st). | 5c20283 |
+| 2026-10-20 | Design/tillgänglighet | Kontrast enligt WCAG för alla färgpar i ljust och mörkt läge: allt klarade 4,5:1 utom grå hjälptext på sidans bakgrund i ljust läge (4,40). `--muted` #5D6B74 → #5A6871 ger minst 4,61 mot alla ljusa ytor – knappt synligt, men läsbart i solljus. | (denna) |
 
 ## Idéer att ta sig an
 
