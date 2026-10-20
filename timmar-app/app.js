@@ -778,7 +778,7 @@ function topbar(){
     + '<span class="eyebrow">Konto</span></button>'
     + '</div>'
     + '<div class="tabs" role="tablist">'
-    + tabs.map(t=>'<button class="tab" role="tab" aria-selected="'+(S.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+'</button>').join("")
+    + tabs.map(t=>'<button class="tab" role="tab" aria-selected="'+(S.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+esc(t[1])+'</button>').join("")
     + '</div><div class="temper" aria-hidden="true"></div>'
     + (S.offline?'<div class="banner offline" role="status"><span class="dot" aria-hidden="true"></span>'
       + '<span><b>Ingen anslutning.</b> Det du sparar ligger kvar i telefonen och skickas när nätet är tillbaka – du behöver inte spara igen.</span></div>':'');
