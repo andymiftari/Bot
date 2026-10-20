@@ -620,7 +620,7 @@ function korRows(){
     /* En påbörjad resa visas alltid, även om den startades en tidigare månad.
        Annars ser det ut som att den försvunnit när klockan slår midnatt den
        sista i månaden och föraren fortfarande är ute. */
-    if(t.status!=="open" && String(t.startAt||"").slice(0,7)!==ym) return false;
+    if(t.status!=="open" && localDay(t.startAt).slice(0,7)!==ym) return false;
     if(S.korVeh && t.vehicleId!==S.korVeh) return false;
     if(isAdmin() && S.korWho!=="alla" && t.empId!==S.korWho) return false;
     if(!isAdmin() && t.empId!==S.me.id) return false;
@@ -671,7 +671,7 @@ function viewKor(){
   const tripRows=rows.map(function(t){
     const open=t.status==="open";
     return '<tr>'
-      + '<td>'+esc(dagText(t.startAt))+'</td>'
+      + '<td class="nowrap" title="'+esc(stampText(t.startAt))+'">'+esc(shortDay(t.startAt))+'</td>'
       + '<td><span class="code">'+esc(t.regnr||"—")+'</span></td>'
       + (isAdmin()?'<td>'+esc(t.empName||"—")+'</td>':'')
       + '<td>'+(t.projectId?esc(projName(t.projectId)):'<span class="note">—</span>')+'</td>'
@@ -743,10 +743,20 @@ function viewKor(){
       + '</tfoot></table></div></div>':'');
 }
 const projName = pid => { const p=projById(pid); return p ? (p.kod?p.kod+" · ":"")+p.name : "Okänt projekt"; };
-const dagText = iso => { const d=String(iso||"").slice(0,10); return d||"—"; };
+/* Tidsstämplarna sparas i UTC (toISOString). Visas eller grupperas de på de
+   första tecknen hamnar allt mellan midnatt och 01/02 på fel dag – och en
+   resa natten till den 1:a i fel månad – och klockslagen blir en till två
+   timmar fel. Därför läses de alltid om till svensk lokal tid. */
+const localDay = iso => { const d=new Date(iso); return iso && !isNaN(d) ? dkey(d) : ""; };
+const localTime = iso => { const d=new Date(iso); return iso && !isNaN(d) ? pad(d.getHours())+":"+pad(d.getMinutes()) : ""; };
+const stampText = iso => String(iso||"").length<16 ? String(iso||"").slice(0,10) : localDay(iso)+" "+localTime(iso);
+const dagText = iso => localDay(iso)||"—";
+/* "tis 20/10" – kort nog för en tabellcell på telefonen */
+const shortDay = iso => { const ds=localDay(iso); if(!ds) return "—"; const d=fromKey(ds); return DAYS_S[isoDow(d)].toLowerCase()+" "+d.getDate()+"/"+(d.getMonth()+1); };
 const tidText = iso => {
-  const s=String(iso||""); if(s.length<16) return "—";
-  return s.slice(8,10)+"/"+s.slice(5,7)+" "+s.slice(11,16);
+  if(String(iso||"").length<16) return "—";
+  const d=new Date(iso); if(isNaN(d)) return "—";
+  return pad(d.getDate())+"/"+pad(d.getMonth()+1)+" "+localTime(iso);
 };
 
 /* ============================ topbar ============================ */
@@ -1410,9 +1420,9 @@ function photoPanel(pid){
   }
   const list=S.projPhotos;
   const grid = list===null ? '<p class="note">Hämtar foton…</p>'
-    : list.length ? '<div class="photogrid">'+list.map(f=>'<button class="photo" data-act="photoview" data-f="'+esc(f.id)+'" title="'+esc((f.note||"")+" · "+(f.byName||"")+" · "+String(f.at).slice(0,10))+'">'
+    : list.length ? '<div class="photogrid">'+list.map(f=>'<button class="photo" data-act="photoview" data-f="'+esc(f.id)+'" title="'+esc((f.note||"")+" · "+(f.byName||"")+" · "+localDay(f.at))+'">'
         + '<img src="'+esc(f.thumb)+'" alt="'+esc(f.note||"Foto")+'" loading="lazy">'
-        + '<span class="cap">'+esc(String(f.at).slice(0,10))+(f.note?' · '+esc(f.note):'')+'</span></button>').join("")+'</div>'
+        + '<span class="cap">'+esc(localDay(f.at))+(f.note?' · '+esc(f.note):'')+'</span></button>').join("")+'</div>'
     : '<p class="note">Inga foton än. Fota före, under och efter jobbet – infästningar, mått, skador och det färdiga resultatet.</p>';
   return '<div class="panel" style="margin-top:14px"><div class="hd"><h3>Foton</h3>'
     + '<label class="btn sm primary" style="cursor:pointer">Lägg till foto'
@@ -1464,11 +1474,11 @@ async function uploadPhotos(pid, files, note){
 async function viewPhoto(id){
   const f=(S.projPhotos||[]).find(x=>x.id===id); if(!f) return;
   const canDel=isAdmin() || f.byId===S.me.id;
-  openModal('<div class="mh"><div><span class="eyebrow">'+esc(String(f.at).slice(0,16).replace("T"," "))+' · '+esc(f.byName||"")+'</span>'
+  openModal('<div class="mh"><div><span class="eyebrow">'+esc(stampText(f.at))+' · '+esc(f.byName||"")+'</span>'
     + '<h3 style="margin-top:2px">'+esc(f.note||"Foto")+'</h3></div><button class="btn sm ghost" data-act="close">Stäng</button></div>'
     + '<div class="mb"><img id="pv-img" src="'+esc(f.thumb)+'" alt="" style="width:100%;height:auto;display:block;background:var(--sunken)">'
     + '<div class="actions">'+(canDel?'<button class="btn ghost" data-act="photodel" data-f="'+esc(f.id)+'">Ta bort fotot</button>':'')
-    + '<a class="btn" id="pv-dl" download="foto-'+esc(String(f.at).slice(0,10))+'.jpg" href="'+esc(f.thumb)+'">Spara bilden</a></div></div>');
+    + '<a class="btn" id="pv-dl" download="foto-'+esc(localDay(f.at))+'.jpg" href="'+esc(f.thumb)+'">Spara bilden</a></div></div>');
   try{
     const d=await Store.get("projphotodata/"+id);
     const img=document.getElementById("pv-img"), a=document.getElementById("pv-dl");
@@ -1780,7 +1790,7 @@ function viewInkorg(){
     return f==="alla" || (f==="klara" ? x.done : !x.done);
   });
   const list=rows.map(function(x){
-    const när=String(x.at||"").slice(0,16).replace("T"," ");
+    const när=stampText(x.at);
     const mail=/@/.test(String(x.contact||""));
     return '<tr><td class="num">'+esc(när)+'</td>'
       + '<td><b>'+esc(x.name||"—")+'</b>'+(x.account?'<div class="note">'+esc(x.account)+'</div>':'')+'</td>'
@@ -3034,7 +3044,7 @@ function viewArkiv(){
   const f=S.arkFilter;
   const rows=S.archive.filter(function(a){ return f==="alla" || a.kind===f; });
   const list=rows.map(function(a){
-    const when=String(a.createdAt).slice(0,16).replace("T"," ");
+    const when=stampText(a.createdAt);
     return '<tr><td class="num">'+esc(when)+'</td>'
       + '<td><b>'+esc(a.label)+'</b><div class="note">'+esc(a.filename)+'</div></td>'
       + '<td>'+(a.kind==="projekt"?"Projekt":a.kind==="lon"?"Löneunderlag":"Tidrapport")+'</td>'
@@ -3825,7 +3835,7 @@ function learnPanel(o){
     + '<label class="fld"><span class="eyebrow">Vad var fel, eller vad ska AI:n tänka på nästa gång?</span>'
     + '<textarea id="k-learn" rows="3" placeholder="T.ex. Montering tar alltid en hel dag för två man. Rostfritt köper vi för ca 95 kr/kg.">'+esc(ex?ex.comment:"")+'</textarea></label>'
     + '<div class="bar" style="margin:8px 0 0"><button class="btn sm primary" data-act="offlearnsave">'+(ex?"Uppdatera lärdomen":"Spara som lärdom")+'</button>'
-    + (ex?'<span class="note">Sparad '+esc(String(ex.at).slice(0,10))+'</span>':'')+'</div></div>';
+    + (ex?'<span class="note">Sparad '+esc(localDay(ex.at))+'</span>':'')+'</div></div>';
 }
 /* Utfallet i projektet som skapades från offerten, om det finns något. */
 function offerOutcome(offerId){

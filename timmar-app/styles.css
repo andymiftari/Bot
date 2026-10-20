@@ -248,6 +248,7 @@ select.inv.inv-fakturerad{border-color:var(--ok)}
 .tbl td{padding:10px 12px;border-bottom:1px solid var(--line)}
 .tbl tr:last-child td{border-bottom:0}
 .tbl td.r,.tbl th.r{text-align:right;}
+.tbl td.nowrap{white-space:nowrap}
 /* Dra i sidled, aldrig klippt. Kant-skuggan visar att det finns mer kvar
    och försvinner av sig själv när man dragit hela vägen (inget JS). */
 .tblwrap{overflow:auto hidden;border:1px solid var(--line);-webkit-overflow-scrolling:touch;
