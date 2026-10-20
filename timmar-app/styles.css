@@ -103,7 +103,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .navgroup{display:flex;align-items:center;gap:8px}
 .navgroup .per{min-width:186px;text-align:center;font-stretch:85%;font-size:17px;font-weight:600}
 .navgroup .per small{display:block;font-size:11px;font-weight:400;color:var(--muted);}
-input[type=text],input[type=number],input[type=password],select,textarea{
+input[type=text],input[type=number],input[type=password],input[type=search],select,textarea{
   border:1px solid var(--line-2);background:var(--surface);padding:10px 9px;width:100%;border-radius:var(--r-ctl);min-height:44px;font-size:16px}
 input:disabled,select:disabled{background:var(--sunken);color:var(--muted)}
 label.fld{display:block}
@@ -459,6 +459,16 @@ h2{font-size:26px} h3{font-size:18px}
 .tab[aria-selected="true"]::after{content:"";position:absolute;left:14px;right:14px;bottom:0;height:3px;
   border-radius:3px 3px 0 0;background:var(--straw)}
 .tab:focus-visible{outline-color:var(--straw);outline-offset:-3px}
+
+/* sökrutan ovanför projektlistan – förstoringsglaset är en mask, så det
+   följer temats färger */
+.projsearch{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 12px}
+.projsearch::before{content:"";position:absolute;left:13px;top:22px;width:17px;height:17px;transform:translateY(-50%);
+  background:var(--muted);pointer-events:none;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='M15.5 15.5 21 21'/%3E%3C/svg%3E") center/contain no-repeat;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='M15.5 15.5 21 21'/%3E%3C/svg%3E") center/contain no-repeat}
+.projsearch input[type=search]{flex:1 1 260px;max-width:440px;padding-left:40px;-webkit-appearance:none;appearance:none}
+.projsearch input[type=search]::-webkit-search-cancel-button{display:none}
 
 /* filer till AI-kalkylen */
 .aifiles{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}

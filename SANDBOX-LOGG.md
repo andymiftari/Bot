@@ -21,6 +21,7 @@ stoppas av artifaktens ram.
 | 2026-10-20 | Testbarhet | Demoläge som artifakt: hela appen mot testdata, uppdateras varje varv | b571109 |
 | 2026-10-20 | Stabilitet/design | Foton: eget fönster med förhandsvisning, text och Avbryt i stället för webbläsarens textruta; ta bort foto med två tryck i stället för confirm() | 8498b70 |
 | 2026-10-20 | Säkerhet | Främling med eget Firebase-konto kunde ge sig själv en profil och läsa projekt, kunder, timpriser och bilar; alla inloggade kunde läsa inköpspriserna i AI-kunskapen. Nu skapar bara superadmin profiler (appen skriver profilen som admin), allt kräver profil och offert/AI-kunskap kräver admin. Vecka i attest måste stämma med dokumentet. 34 regeltester i emulatorn. **Måste ut tillsammans: app + regler (deployflödet tar appen först).** | 8f53f44 |
+| 2026-10-20 | Ny funktion | Sökruta i projektlistan: filtrerar på kod, namn, kund och adress medan man skriver (flera ord = alla måste finnas), visar ”2 av 5 projekt”, summaraden räknar träffarna, Esc/Rensa tömmer. Demo: rimligare offertbelopp. | (denna) |
 
 ## Idéer att ta sig an
 

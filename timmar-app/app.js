@@ -1411,8 +1411,10 @@ function viewProjekt(){
      Arbetare ser bara timmar, aldrig vad projektet är värt. */
   let sumPeriod=0, sumAll=0;
   /* Avslutade projekt ligger i Arkiv, inte i listan. */
-  const list=S.projects.filter(p=>pStatus(p)!=="avslutad");
-  const archived=S.projects.length-list.length;
+  const open=S.projects.filter(p=>pStatus(p)!=="avslutad");
+  const archived=S.projects.length-open.length;
+  const q=String(S.projQ||"").trim();
+  const list=q?open.filter(p=>projMatches(p,q)):open;
   const rows=list.map(p=>{
     const tp=projectTotals(p.id,dates), all=projectTotals(p.id,null);
     const rate=+p.rate||0;
@@ -1434,6 +1436,15 @@ function viewProjekt(){
   }).join("");
   sumPeriod=r2(sumPeriod); sumAll=r2(sumAll);
   const totalAll=list.reduce((a,p)=>a+projectTotals(p.id,dates).hours,0);
+  const search = open.length>1
+    ? '<div class="projsearch"><input type="search" id="proj-q" value="'+esc(S.projQ||"")+'" placeholder="Sök på projekt, kund, kod eller adress"'
+      + ' autocomplete="off" spellcheck="false" enterkeyhint="search" aria-label="Sök projekt">'
+      + (q?'<span class="note">'+list.length+' av '+open.length+' projekt</span><button class="btn sm ghost" data-act="projqclear">Rensa</button>':'')
+      + '</div>'
+    : '';
+  const emptyMsg = q
+    ? 'Inga projekt matchar ”'+esc(q)+'”. <button class="btn sm" data-act="projqclear">Rensa sökningen</button>'
+    : (archived?'Inga aktiva eller vilande projekt.':'Inga projekt upplagda ännu.')+(admin?' Skapa ett nytt med knappen ovan.':'');
   return '<div class="bar">'
     + (S.projPeriod==="range"?''
        :'<div class="navgroup"><button class="btn sm" data-act="prev">‹</button>'
@@ -1444,18 +1455,26 @@ function viewProjekt(){
     + (admin?'<button class="btn primary" style="margin-left:auto" data-act="newproj">Nytt projekt</button>'
             :'<span class="note" style="margin-left:auto">Endast superadmin kan skapa projekt</span>')
     + '</div>'
+    + search
     + '<div class="tblwrap"><table class="tbl"><thead><tr><th>Kod</th><th>Projekt</th><th>Kund</th><th>Status</th>'
     + (admin?'<th>Faktura</th><th class="r">Att fakturera i period</th><th class="r">Att fakturera totalt</th><th class="r">Timmar i period</th>'
             :'<th class="r">Mina timmar i period</th><th class="r">Mina timmar totalt</th>')
     + '<th></th></tr>'
-    + (admin&&list.length?'<tr class="sumrow"><th colspan="5">Summa alla projekt</th>'
+    + (admin&&list.length?'<tr class="sumrow"><th colspan="5">'+(q?'Summa sökträffar':'Summa alla projekt')+'</th>'
         + '<th class="r">'+kr(sumPeriod)+'</th><th class="r">'+kr(sumAll)+'</th><th></th><th></th></tr>':'')
     + '</thead>'
-    + '<tbody>'+(rows||'<tr><td colspan="'+(admin?9:7)+'" class="empty">'+(archived?'Inga aktiva eller vilande projekt.':'Inga projekt upplagda ännu.')+(admin?' Skapa ett nytt med knappen ovan.':'')+'</td></tr>')+'</tbody></table>'
+    + '<tbody>'+(rows||'<tr><td colspan="'+(admin?9:7)+'" class="empty">'+emptyMsg+'</td></tr>')+'</tbody></table>'
     + '</div>'
     + (admin&&archived?'<p class="note" style="margin-top:10px">'+archived+' avslutade projekt ligger i arkivet med all tid och alla kostnader kvar. '
       + '<button class="btn sm" data-act="tab" data-v="arkiv">Öppna arkivet</button></p>':'');
 }
+/* Sökningen i projektlistan: varje ord ska finnas någonstans i kod, namn,
+   kund eller adress. Stora och små bokstäver spelar ingen roll. */
+function projMatches(p, q){
+  const hay=[p.kod, p.name, p.kund, p.adress].map(x=>String(x||"").toLowerCase()).join(" ");
+  return q.toLowerCase().split(/\s+/).filter(Boolean).every(w=>hay.indexOf(w)>=0);
+}
+let projQTimer=null;
 function projectDetail(pid){
   const p=projById(pid);
   if(!p){ S.projSel=null; return viewProjekt(); }
@@ -3661,6 +3680,12 @@ function offerLive(){
   if(mt && !o.mailEdited && document.activeElement!==mt) mt.value=offerMailText(o);
 }
 document.addEventListener("input", function(ev){
+  if(ev.target && ev.target.id==="proj-q"){
+    S.projQ=ev.target.value;
+    clearTimeout(projQTimer);
+    projQTimer=setTimeout(scheduleRender, 120);
+    return;
+  }
   if(S.tab==="kalkyl" && S.off && ev.target && ev.target.closest && ev.target.closest("#kalk")) offerLive();
 });
 function offerBody(o){
@@ -5111,6 +5136,7 @@ document.addEventListener("click", async function(ev){
     if(ok) S.projPhotos=(S.projPhotos||[]).filter(x=>x.id!==id);
     closeModal(); render(); return;
   }
+  if(act==="projqclear"){ S.projQ=""; dirty.delete("proj-q"); render(); const i=document.getElementById("proj-q"); if(i) i.focus(); return; }
   if(act==="openproj"){ S.projSel=t.dataset.p; S.projPhotosFor=null; render(); return; }
   if(act==="openarkproj"){ S.tab="projekt"; await loadProjectData(); S.projSel=t.dataset.p; S.projPhotosFor=null; render(); window.scrollTo(0,0); return; }
   if(act==="backproj"){ S.projSel=null; render(); return; }
@@ -5450,6 +5476,7 @@ document.addEventListener("change", async function(ev){
 });
 document.addEventListener("keydown", function(ev){
   if(ev.key==="Escape" && inModal()){ closeModal(); return; }
+  if(ev.key==="Escape" && ev.target && ev.target.id==="proj-q" && S.projQ){ ev.preventDefault(); S.projQ=""; dirty.delete("proj-q"); render(); return; }
   if(ev.key!=="Enter" || !ev.target) return;
   const id=ev.target.id, click=sel=>{ const b=(inModal()?modalRoot:document).querySelector(sel); if(b) b.click(); };
   if(id==="l-user"||id==="l-pw"){ ev.preventDefault(); const b=document.querySelector("[data-act='login']"); if(b) b.click(); }

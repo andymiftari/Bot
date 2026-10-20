@@ -46,13 +46,13 @@ export function seed(){
 
   const projects = [
     {id:"trappracke-storgatan", kod:"P-1042", name:"Trappräcke rostfritt", kund:"Brf Linden", adress:"Storgatan 12, Lund", status:"aktiv", invoice:"ej", rate:650,
-      quote:{total:50000, hours:60, labour:39000, material:9000, travel:2000, other:0, offerId:"", offerNr:""}},
+      quote:{total:120000, hours:160, labour:104000, material:12500, travel:3500, other:0, offerId:"", offerNr:""}},
     {id:"grind-uppfart", kod:"P-1039", name:"Grind till uppfart", kund:"Karlsson", adress:"Ängsvägen 4, Dalby", status:"vilande", invoice:"skapad", rate:650,
       quote:{total:18000, hours:20, labour:13000, material:4500, travel:500, other:0, offerId:"", offerNr:""}},
     {id:"balkong-sodra", kod:"P-1045", name:"Balkongräcken 12 st", kund:"HSB Södra", adress:"Södra Esplanaden 8, Malmö", status:"aktiv", invoice:"ej", rate:620,
-      quote:{total:186000, hours:210, labour:130200, material:48000, travel:7800, other:0, offerId:"", offerNr:""}},
+      quote:{total:450000, hours:620, labour:384400, material:52000, travel:13600, other:0, offerId:"", offerNr:""}},
     {id:"stalbalk-garage", kod:"P-1047", name:"Stålbalk garage", kund:"Nilsson Bygg AB", adress:"Industrigatan 3, Staffanstorp", status:"aktiv", invoice:"ej", rate:680,
-      quote:{total:42000, hours:36, labour:24480, material:16000, travel:1520, other:0, offerId:"", offerNr:""}},
+      quote:{total:185000, hours:240, labour:163200, material:18800, travel:3000, other:0, offerId:"", offerNr:""}},
     {id:"spiraltrappa-villa", kod:"P-1031", name:"Spiraltrappa villa", kund:"Fam. Persson", adress:"Bokvägen 19, Lomma", status:"avslutad", invoice:"fakturerad", rate:650,
       quote:{total:95000, hours:110, labour:71500, material:21000, travel:2500, other:0, offerId:"", offerNr:""},
       archivedAt:iso(addDays(today, -45)), archivedBy:"Andy Miftari"},
