@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Säkerhetsregler för Ellingesmide (version 2.2).
+// Säkerhetsregler för Ellingesmide (version 2.3).
 // Klistra in hela den här filen i Firebase-konsolen:
 //   Firestore Database  ->  Rules  ->  ersätt allt  ->  Publish
 //
@@ -13,6 +13,10 @@ rules_version = '2';
 //   - En inskickad eller attesterad vecka är låst. Arbetaren kan inte ändra
 //     timmarna i den och kan inte ta bort låset – det gör bara superadmin.
 //   - Superadmin och support (role "admin"/"support") får skriva allt.
+//   - Bara superadmin lägger upp profiler. Vem som helst kan skapa ett
+//     Firebase-konto med appens publika nyckel, så ett konto utan profil
+//     ska inte komma åt något: allt utom egna tidrapporter och resor kräver
+//     en profil (isEmployee) – och den kan man inte ge sig själv.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -29,6 +33,11 @@ service cloud.firestore {
 
     function profile() {
       return get(/databases/$(database)/documents/employees/$(request.auth.uid)).data;
+    }
+
+    // Inloggad med profil, eller den som satte upp firman.
+    function isStaff() {
+      return isEmployee() || isFirstOwner();
     }
 
     function isFirstOwner() {
@@ -72,11 +81,10 @@ service cloud.firestore {
       // Var och en läser sin egen profil. Hela personallistan bara superadmin.
       allow get: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow list: if isAdmin();
-      // Ett nytt konto lägger upp sin egen profil som arbetare.
-      // Superadmin höjer sedan rollen vid behov. Första kontot får bli admin.
-      allow create: if signedIn()
-                    && request.auth.uid == uid
-                    && (isFirstOwner() || request.resource.data.role == 'arbetare');
+      // Bara superadmin lägger upp profiler – även för nya konton, som appen
+      // skapar åt dem. Den som satte upp firman räknas som superadmin och
+      // skriver så sin egen första profil.
+      allow create: if isAdmin();
       // Den som kopplar en riktig e-postadress till sitt eget konto får skriva
       // just den – inget annat i profilen, och aldrig rollen.
       allow update: if isAdmin()
@@ -89,7 +97,9 @@ service cloud.firestore {
     // Appens namn, texter och färger (settings/app), menyerna för tidtyper och
     // kostnadsslag (settings/lists) och firmans offertuppgifter (settings/offert).
     match /settings/{docId} {
-      allow read: if signedIn();
+      // Utseende och menyer behöver alla med profil. Offertuppgifter och
+      // AI-kunskapen (firmans inköpspriser) bara superadmin.
+      allow read: if (docId == 'offert' || docId == 'aikunskap') ? isAdmin() : isStaff();
       allow write: if (docId == 'lists' || docId == 'offert' || docId == 'aikunskap') ? isAdmin() : isSupport();
     }
 
@@ -114,7 +124,7 @@ service cloud.firestore {
     // Projekt: alla inloggade ser dem (behövs för att välja projekt), bara
     // superadmin ändrar.
     match /projects/{projectId} {
-      allow read: if signedIn();
+      allow read: if isStaff();
       allow create, update: if isAdmin();
       // Avslutade projekt ligger i arkivet och får aldrig tas bort.
       allow delete: if isAdmin() && resource.data.get('status', 'aktiv') != 'avslutad';
@@ -138,9 +148,9 @@ service cloud.firestore {
       // Appen frågar alltid efter empId == sitt eget uid – en bredare fråga nekas.
       allow list: if isAdmin() || (signedIn() && resource.data.empId == request.auth.uid);
       allow create: if isAdmin()
-                    || (ownsId(docId) && request.resource.data.empId == request.auth.uid);
+                    || (isEmployee() && ownsId(docId) && request.resource.data.empId == request.auth.uid);
       allow update: if isAdmin()
-                    || (ownsId(docId)
+                    || (isEmployee() && ownsId(docId)
                         && resource.data.empId == request.auth.uid
                         && request.resource.data.empId == request.auth.uid
                         && locksKept()
@@ -155,11 +165,13 @@ service cloud.firestore {
       allow get: if isAdmin() || ownsId(docId);
       allow list: if isAdmin() || (signedIn() && resource.data.empId == request.auth.uid);
       allow create: if isAdmin()
-                    || (ownsId(docId)
+                    || (isEmployee() && ownsId(docId)
                         && request.resource.data.empId == request.auth.uid
+                        && request.resource.data.week == docId.split('__')[1]
                         && request.resource.data.status == 'inskickad');
       allow update: if isAdmin()
-                    || (ownsId(docId)
+                    || (isEmployee() && ownsId(docId)
+                        && request.resource.data.week == docId.split('__')[1]
                         && resource.data.empId == request.auth.uid
                         && request.resource.data.empId == request.auth.uid
                         && request.resource.data.status == 'inskickad'
@@ -202,14 +214,14 @@ service cloud.firestore {
     // Firmans bilar. Alla inloggade ser dem – de behövs för att kunna
     // rapportera körning – men bara superadmin lägger upp och ändrar.
     match /vehicles/{vehId} {
-      allow read: if signedIn();
+      allow read: if isStaff();
       allow write: if isAdmin();
     }
 
     // Mallbank för mätaravläsningen, en per bil. Alla inloggade förare lär upp
     // den när de sparar en mätarställning. Bara superadmin kan ta bort den.
     match /ocrbanks/{vehId} {
-      allow get: if signedIn();
+      allow get: if isStaff();
       allow create, update: if signedIn()
         && exists(/databases/$(database)/documents/employees/$(request.auth.uid))
         && exists(/databases/$(database)/documents/vehicles/$(vehId))
@@ -229,7 +241,7 @@ service cloud.firestore {
                   || (signedIn() && resource.data.empId == request.auth.uid)
                   || (isEmployee() && resource.data.status == 'open');
       allow create: if isAdmin()
-                    || (signedIn() && request.resource.data.empId == request.auth.uid);
+                    || (isEmployee() && request.resource.data.empId == request.auth.uid);
       // Den som avslutar någon annans glömda resa får bara fylla i slutet:
       // mätare, tid, sträcka och vem som avslutade. Föraren står kvar.
       allow update: if isAdmin()
@@ -257,7 +269,7 @@ service cloud.firestore {
                  || (signedIn() && (resource == null || resource.data.empId == request.auth.uid));
       allow list: if isAdmin();
       allow create, update: if isAdmin()
-                    || (signedIn()
+                    || (isEmployee()
                         && request.resource.data.empId == request.auth.uid
                         && request.resource.data.which in ['start', 'end']
                         && pid == request.resource.data.tripId + '__' + request.resource.data.which

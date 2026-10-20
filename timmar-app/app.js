@@ -5351,7 +5351,7 @@ document.addEventListener("click", async function(ev){
     try{
       const secName="secondary";
       const sec = getApps().find(a=>a.name===secName) || initializeApp(firebaseConfig, secName);
-      const secAuth=getAuth(sec), secDb=getFirestore(sec);
+      const secAuth=getAuth(sec);
       const mail=(document.getElementById("e-mail").value||"").trim();
       /* Har personen en riktig e-post blir den inloggningsadress – då går lösenordet
          att återställa via mejl. Annars används den interna adressen. */
@@ -5361,17 +5361,14 @@ document.addEventListener("click", async function(ev){
         authEmail:authEmail,
         email:mail,
         phone:(document.getElementById("e-phone").value||"").trim()};
-      await setDoc(doc(secDb,"employees",cred.user.uid), base);
+      /* Profilen skrivs av superadmin, inte av det nya kontot. Reglerna låter
+         bara superadmin skapa profiler – annars skulle vem som helst som
+         skapar ett Firebase-konto kunna ge sig själv en profil och komma in. */
       await signOut(secAuth);
+      const full=Object.assign({}, base, {role:role});
+      await Store.set("employees/"+cred.user.uid, full);
       try{ await Store.set("usernames/"+user, {email:authEmail, name:name}); }catch(e){ console.error(e); }
-      if(role!=="arbetare"){
-        /* kontot skapar sig självt som arbetare, superadmin höjer rollen direkt efter */
-        const full=Object.assign({}, base, {role:role});
-        await Store.set("employees/"+cred.user.uid, full);
-        S.employees.push(Object.assign({id:cred.user.uid}, full));
-      }else{
-        S.employees.push(Object.assign({id:cred.user.uid}, base));
-      }
+      S.employees.push(Object.assign({id:cred.user.uid}, full));
       S.employees.sort((a,b)=>String(a.name).localeCompare(String(b.name),"sv"));
       closeModal(); toast("Profilen är skapad. Ge personen kontonamn och lösenord."); render();
     }catch(err){
