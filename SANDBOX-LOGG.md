@@ -44,7 +44,7 @@ stoppas av artifaktens ram.
 | 2026-10-20 | Ny funktion | ”Kopiera till ny” på en offert: ett liknande jobb får samma rader, rubrik, inledning och villkor – nytt nummer, dagens datum, utkast och tom kund. Nytt test (16 st). | e658c84 |
 | 2026-10-20 | Ny funktion | Kundregister: kundfältet i offerter och projekt föreslår tidigare kunder medan man skriver; väljer man en hämtas kontaktperson, adress, e-post och telefon från senaste offerten – bara till tomma fält. Nytt test (17 st). | dfe83df |
 | 2026-10-20 | Ny funktion | ”Fyll N dagar som förra veckan” i veckovyn: kopierar förra veckans arbetsposter dag för dag (måndag→måndag …) till tomma, olåsta vardagar fram till i dag – aldrig framtida dagar, aldrig frånvaro, aldrig helgdagar. Fungerar även när admin fyller i åt någon. Nytt test (18 st). | d84e805 |
-| 2026-10-20 | Ny funktion | ”I dag på firman” överst i Tidrapport för admin: hur många som rapporterat i dag (och vilka som saknas), pågående resor, offerter som går ut inom en vecka och punkter kvar i Att göra – varje ruta leder till rätt flik. Tre små frågor i bakgrunden, uppdateras var femte minut; arbetare ser den inte. Nytt test (19 st). | (denna) |
+| 2026-10-20 | Ny funktion | ”I dag på firman” överst i Tidrapport för admin: hur många som rapporterat i dag (och vilka som saknas), pågående resor, offerter som går ut inom en vecka och punkter kvar i Att göra – varje ruta leder till rätt flik. Tre små frågor i bakgrunden, uppdateras var femte minut; arbetare ser den inte. Nytt test (19 st). | acaf8f4 |
 
 ## Idéer att ta sig an
 
