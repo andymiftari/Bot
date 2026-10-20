@@ -153,6 +153,58 @@ export function seed(){
       createdAt:iso(addDays(today, -3 * (i + 1)))};
   });
 
+  /* Kalkyl: firmauppgifter (påhittade nummer), tre offerter och AI-kunskap. */
+  D["settings/offert"] = {name:"Ellinge Smidesservice AB", address:"Verkstadsvägen 1", zip:"247 00", city:"Ellinge",
+    phone:"070-000 00 00", email:"info@exempel.se", web:"", orgnr:"559000-0000", vatnr:"SE559000000001",
+    bankgiro:"0000-0000", fskatt:true, payTerms:"30 dagar netto", validDays:30, rate:650, markup:15, milPrice:65,
+    terms:"Priserna gäller under förutsättning att arbetet kan utföras i en följd. Ställning och lyft ingår inte om inget annat anges.",
+    signature:"Med vänliga hälsningar\nAndy Miftari", workshop:"Verkstadsvägen 1, 247 00 Ellinge", aiHints:""};
+  const r2 = n => Math.round(n * 100) / 100;
+  function offer(id, nr, status, daysAgo, title, cust, rows, mail){
+    const calc = rows.map(r => Object.assign({}, r, {unitPrice: r.kind === "material" ? r2(r.cost * (1 + r.markup / 100)) : r.price}));
+    const by = k => r2(calc.filter(r => r.kind === k).reduce((a, r) => a + r.qty * r.unitPrice, 0));
+    const net = r2(calc.reduce((a, r) => a + r.qty * r.unitPrice, 0)), vat = r2(net * 0.25);
+    const matCost = r2(rows.filter(r => r.kind === "material").reduce((a, r) => a + r.qty * r.cost, 0));
+    const date = dkey(addDays(today, -daysAgo));
+    D["offers/" + id] = {id, nr, status, date, validDays:30, title, intro:"", mail, terms:"", ref:"Andy Miftari",
+      customer:cust, rows, mailText:"", mailEdited:false, byName:"Andy Miftari", updatedAt:iso(addDays(today, -daysAgo)),
+      validTo:dkey(addDays(today, 30 - daysAgo)),
+      sums:{arbete:by("arbete"), material:by("material"), resa:by("resa"), net, vat, gross:r2(net + vat), vatRate:25,
+        matCost, matMarkup:r2(by("material") - matCost), hours:r2(rows.filter(r => r.kind === "arbete").reduce((a, r) => a + r.qty, 0))}};
+  }
+  const y = today.getFullYear();
+  offer("offert-" + y + "-001", y + "-001", "accepterad", 60, "Balkongräcken 12 st, Södra Esplanaden 8",
+    {name:"HSB Södra", contact:"Lena Ström", address:"Box 1, 200 00 Malmö", email:"lena@exempel.se", phone:""},
+    [{kind:"arbete", desc:"Tillverkning räcken i verkstad", qty:420, unit:"tim", price:620},
+     {kind:"arbete", desc:"Montering på plats", qty:200, unit:"tim", price:620},
+     {kind:"material", desc:"Plattstång 40x8, S355", qty:480, unit:"m", cost:62, markup:15},
+     {kind:"material", desc:"Varmförzinkning", qty:1, unit:"st", cost:14800, markup:10},
+     {kind:"resa", desc:"Resor Ellinge–Malmö", qty:40, unit:"mil", price:65}],
+    "Hej! Vi behöver nya balkongräcken till 12 balkonger på Södra Esplanaden 8. Ritningar bifogas.");
+  offer("offert-" + y + "-002", y + "-002", "skickad", 9, "Trappräcke rostfritt, Kvarngatan",
+    {name:"Brf Kvarnen", contact:"Olle Lind", address:"Kvarngatan 3, 222 22 Lund", email:"olle@exempel.se", phone:""},
+    [{kind:"arbete", desc:"Tillverkning och montering", qty:48, unit:"tim", price:650},
+     {kind:"material", desc:"Rostfritt rör 42,4 mm", qty:26, unit:"m", cost:185, markup:15},
+     {kind:"material", desc:"Handledarhållare", qty:18, unit:"st", cost:95, markup:15},
+     {kind:"resa", desc:"Resor", qty:6, unit:"mil", price:65}],
+    "Hej, vi vill ha offert på ett rostfritt trappräcke i trapphuset, ca 12 meter.");
+  offer("offert-" + y + "-003", y + "-003", "utkast", 1, "Grind och staket, Åkervägen",
+    {name:"Karin Nyström", contact:"", address:"Åkervägen 7, 247 00 Ellinge", email:"karin@exempel.se", phone:""},
+    [{kind:"arbete", desc:"Grind 3,5 m med motor förberedelse", qty:22, unit:"tim", price:650},
+     {kind:"material", desc:"VKR 60x60x3", qty:30, unit:"m", cost:88, markup:15},
+     {kind:"resa", desc:"Resor", qty:2, unit:"mil", price:65}],
+    "Hej! Kan ni göra en skjutgrind till uppfarten? Öppningen är ca 3,5 meter.");
+  D["projects/balkong-sodra"].quote.offerId = "offert-" + y + "-001";
+  D["projects/balkong-sodra"].quote.offerNr = y + "-001";
+  D["settings/aikunskap"] = {
+    prices:[{name:"Plattstång 40x8 S355", unit:"m", cost:62, note:"Stena Stål"},
+            {name:"VKR 40x40x3", unit:"m", cost:55, note:"Tibnor"},
+            {name:"Rostfritt rör 42,4x2", unit:"m", cost:185, note:"Tibnor"},
+            {name:"Varmförzinkning", unit:"kg", cost:14, note:"Zinkverket, två veckors ledtid"}],
+    norms:[{task:"Montering av räcke", unit:"meter", hours:0.75},
+           {task:"Svetsning av grindram", unit:"st", hours:6}],
+    rules:"Vi räknar alltid minst 4 timmar för montering. Lägg 1 timme ritning på allt."};
+
   D["settings/app"] = {};
   D["settings/lists"] = {};
   return D;

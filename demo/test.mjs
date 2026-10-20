@@ -48,7 +48,7 @@ async function open(opts = {}){
 }
 async function closeModal(p){ if(await p.$("#modal-root .ovl")){ await p.keyboard.press("Escape"); await p.waitForTimeout(150); } }
 async function tab(p, t){ await p.click('.tab[data-v="' + t + '"]'); await p.waitForTimeout(450); await closeModal(p); }
-const data = p => p.evaluate(() => JSON.parse(localStorage.getItem("ellingesmide-demo-v2")));
+const data = p => p.evaluate(() => JSON.parse(localStorage.getItem("ellingesmide-demo-v3")));
 async function tomorrowWorkday(p){ return p.evaluate(() => { const d=new Date(); d.setDate(d.getDate()+1); while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()+1); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }); }
 function check(cond, msg){ if(!cond) throw new Error(msg); }
 
@@ -153,7 +153,7 @@ const tests = {
 
   "körjournal i svensk tid": async () => {
     const {p, ctx} = await open();
-    await p.evaluate(() => { const LS="ellingesmide-demo-v2", d=JSON.parse(localStorage.getItem(LS)), n=new Date();
+    await p.evaluate(() => { const LS="ellingesmide-demo-v3", d=JSON.parse(localStorage.getItem(LS)), n=new Date();
       const a=new Date(n.getFullYear(), n.getMonth(), 1, 0, 30);
       d["trips/natt"]={id:"natt",vehicleId:"bil-xyz789",regnr:"XYZ789",empId:"u-erik",empName:"Erik Lund",projectId:"service-allmant",kind:"tjanst",purpose:"Nattresa",startKm:1,startAt:a.toISOString(),endKm:31,endAt:new Date(a.getTime()+3e6).toISOString(),km:30,status:"done"};
       localStorage.setItem(LS, JSON.stringify(d)); });
@@ -167,7 +167,7 @@ const tests = {
   "xss: skadlig text körs aldrig": async () => {
     const {p, ctx} = await open({viewport:{width:1280, height:900}});
     await p.evaluate(() => {
-      const LS="ellingesmide-demo-v2", d=JSON.parse(localStorage.getItem(LS));
+      const LS="ellingesmide-demo-v3", d=JSON.parse(localStorage.getItem(LS));
       const P=f=>'"><img src=x onerror="window.__xss=(window.__xss||[]).concat(\''+f+'\')">';
       const skip=/^(id|empId|projectId|vehicleId|type|kind|status|role|month|week|unit|invoice|authEmail|startAt|endAt|at|createdAt|updatedAt|date|ownerUid|created|byId|tripId|which|archivedAt)$/;
       const walk=(o,path)=>{ for(const k of Object.keys(o)){ const v=o[k];
