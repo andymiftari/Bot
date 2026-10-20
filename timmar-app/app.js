@@ -1347,8 +1347,30 @@ function photoPanel(pid){
     + '<input type="file" id="photo-in" data-p="'+esc(pid)+'" accept="image/*" capture="environment" multiple hidden></label></div>'
     + '<div style="padding:12px 16px 16px">'+grid+'</div></div>';
 }
-async function uploadPhotos(pid, files){
-  const note=(prompt("Kort text till fotot (valfritt), t.ex. \"Infästning vägg\":","")||"").trim().slice(0,200);
+/* Valda foton visas först i ett eget fönster: man ser vad som laddas upp,
+   kan skriva en kort text och kan ångra sig innan något sparas. */
+let pendingPhotos=null;
+function dropPendingPhotos(){
+  if(!pendingPhotos) return;
+  pendingPhotos.urls.forEach(function(u){ try{ URL.revokeObjectURL(u); }catch(e){} });
+  pendingPhotos=null;
+}
+function photoNoteModal(pid, files){
+  dropPendingPhotos();
+  pendingPhotos={pid:pid, files:files, urls:files.map(function(f){ return URL.createObjectURL(f); })};
+  const n=files.length, one=n===1;
+  openModal('<div class="mh"><div><span class="eyebrow">'+n+(one?' foto':' foton')+'</span>'
+    + '<h3 style="margin-top:2px">Text till '+(one?'fotot':'fotona')+'</h3></div><button class="btn sm ghost" data-act="photocancel">Avbryt</button></div>'
+    + '<div class="mb"><div class="photogrid">'+pendingPhotos.urls.slice(0,8).map(u=>'<div class="photo"><img src="'+esc(u)+'" alt=""></div>').join("")+'</div>'
+    + (n>8?'<p class="note">… och '+(n-8)+' till.</p>':'')
+    + '<label class="fld" style="margin-top:12px"><span class="eyebrow">Kort text (valfritt)</span>'
+    + '<input type="text" id="ph-note" maxlength="200" placeholder="T.ex. Infästning vägg" enterkeyhint="done"></label></div>'
+    + '<div class="mf"><button class="btn" data-act="photocancel">Avbryt</button>'
+    + '<button class="btn primary" data-act="photoup">Spara '+(one?'fotot':n+' foton')+'</button></div>',
+    function(){ const i=document.getElementById("ph-note"); if(i) i.focus(); });
+}
+async function uploadPhotos(pid, files, note){
+  note=String(note||"").trim().slice(0,200);
   let ok=0;
   for(const file of files){
     try{
@@ -5069,9 +5091,19 @@ document.addEventListener("click", async function(ev){
   }
   if(act==="nudgeday"){ dayModal(emp, t.dataset.d); return; }
   if(act==="photoview"){ await viewPhoto(t.dataset.f); return; }
+  if(act==="photocancel"){ dropPendingPhotos(); closeModal(); return; }
+  if(act==="photoup"){
+    const p=pendingPhotos; if(!p){ closeModal(); return; }
+    const note=(document.getElementById("ph-note")||{}).value||"";
+    t.disabled=true; t.textContent="Sparar…";
+    pendingPhotos=null;
+    await uploadPhotos(p.pid, p.files, note);
+    p.urls.forEach(function(u){ try{ URL.revokeObjectURL(u); }catch(e){} });
+    closeModal(); return;
+  }
   if(act==="photodel"){
     const id=t.dataset.f, f=(S.projPhotos||[]).find(x=>x.id===id); if(!f) return;
-    if(!confirm("Ta bort fotot från projektet?")) return;
+    if(!confirmTwice("photodel"+id)){ t.textContent="Tryck igen för att ta bort"; return; }
     const ok=await guard(async function(){
       await Store.del("projphotos/"+id);
       try{ await Store.del("projphotodata/"+id); }catch(e){ console.error(e); }
@@ -5400,7 +5432,7 @@ document.addEventListener("change", async function(ev){
   if(ev.target.id==="photo-in"){
     const files=Array.from(ev.target.files||[]), pid=ev.target.dataset.p;
     ev.target.value="";
-    if(files.length && pid) await uploadPhotos(pid, files);
+    if(files.length && pid) photoNoteModal(pid, files);
     return;
   }
   if(ev.target.id==="f-type"){ syncProjField(); return; }
@@ -5431,6 +5463,7 @@ document.addEventListener("keydown", function(ev){
     const b=scope.querySelector("[data-act='add']"); if(b) b.click();
   }
   else if(id==="e-name"||id==="e-user"||id==="e-pw"){ ev.preventDefault(); click("[data-act='saveemp']"); }
+  else if(id==="ph-note"){ ev.preventDefault(); click("[data-act='photoup']"); }
   else if(id==="p-name"||id==="p-kod"||id==="p-kund"||id==="p-rate"||id==="p-adress"){ ev.preventDefault(); click("[data-act='saveproj']"); }
   else if(id==="m-old"||id==="m-new"){ ev.preventDefault(); click("[data-act='changepw']"); }
 });

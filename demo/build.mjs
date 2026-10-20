@@ -108,7 +108,12 @@ for(const f of ["lib/xlsx.full.min.js", "lib/pdf.worker.min.js", "lib/pdf.min.js
   const body = (/<body>([\s\S]*?)<\/body>/.exec(html) || [])[1] || "";
   const keep = head.split("\n").filter(l => !/<meta charset|<meta name="viewport"/.test(l)).join("\n");
   if(!head || !body) throw new Error("index.html: hittar inte head/body");
-  writeFileSync(p, keep.replace("<title>", '<meta name="claude:viewport-fit-sides" content="cover">\n<title>') + "\n" + body);
+  const page = keep.replace("<title>", '<meta name="claude:viewport-fit-sides" content="cover">\n<title>') + "\n" + body;
+  /* Specialtecken skrivs som koder, så att sidan ser rätt ut oavsett vilken
+     teckenkodning den serveras med: &#NNN; i HTML, \\uXXXX inne i skript. */
+  const ascii = page.split(/(<script[\s\S]*?<\/script>)/).map((part, i) => part.replace(/[^\x00-\x7f]/g,
+    ch => i % 2 ? "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0") : "&#" + ch.charCodeAt(0) + ";")).join("");
+  writeFileSync(p, ascii);
 }
 
 console.log("Demo byggd i " + out + " (app " + appVersion + ")");

@@ -18,10 +18,11 @@ stoppas av artifaktens ram.
 
 | Datum | Område | Vad | Commit |
 |---|---|---|---|
-| 2026-10-20 | Testbarhet | Demoläge som artifakt: hela appen mot testdata, uppdateras varje varv | (denna) |
+| 2026-10-20 | Testbarhet | Demoläge som artifakt: hela appen mot testdata, uppdateras varje varv | b571109 |
+| 2026-10-20 | Stabilitet/design | Foton: eget fönster med förhandsvisning, text och Avbryt i stället för webbläsarens textruta; ta bort foto med två tryck i stället för confirm() | (denna) |
 
 ## Idéer att ta sig an
 
-- Byt webbläsarens egna dialoger (`prompt` för fototext, `confirm` för att ta bort foto, `window.print` i körjournalen) mot appens egna fönster – de ser bättre ut och fungerar överallt.
+- `window.print` i körjournalen fungerar i appen men inte i demon – överväg en PDF-export i stället.
 - Säkerhetshuvuden i `timmar-app/_headers` (gå igenom vad som redan finns).
 - Svenska datum och tal överallt i exporter.
