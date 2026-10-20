@@ -500,9 +500,13 @@ async function saveDay(empId, ds, entries){
      databasen inte neka ändringar i en attesterad vecka. */
   const lk=monthDoc(empId,ym).locked;
   if(lk && Object.keys(lk).length) body.locked=lk;
-  await Store.set("months/"+empId+"__"+ym, body);
+  /* Listan uppdateras innan sparningen är klar. Nästa ändring – ett snabbt
+     tryck till, eller en sparning som väntar på nätet – utgår då från den
+     här i stället för från den gamla, och skriver inte över den. Nekar
+     databasen ändringen rättar realtidslyssningen tillbaka listan. */
   const i=S.months.findIndex(m=>m.empId===empId&&m.month===ym);
   if(i>=0) S.months[i]=Object.assign({},S.months[i],body); else S.months.push(body);
+  await Store.set("months/"+empId+"__"+ym, body);
 }
 async function setApproval(empId, wk, status, comment){
   const body={empId:empId, week:wk, status:status, comment:comment||"",
@@ -4310,9 +4314,25 @@ function markDirty(ev){
 document.addEventListener("input", markDirty, true);
 document.addEventListener("change", markDirty, true);
 
-document.addEventListener("click", async function(ev){
+/* Ett andra tryck på samma knapp inom 400 ms är ett dubbeltryck och
+   ignoreras – annars kan en post läggas till två gånger. Bläddring, flikar
+   och knappar som bara lägger till en tom rad i ett formulär får tryckas hur
+   snabbt som helst. (Att två snabba sparningar inte skriver över varandra
+   sköter saveDay, som uppdaterar listan innan den väntar på databasen.) */
+const FREE_ACTS = /^(prev|next|today|view|preset|pp|tab|close|ovl|noop|lonprev|lonnext|lonnow|inbf|arkf|memenu|offback|backproj|gotoemp|gologin|goonboarding|forgot|offrowadd|lradd|lstadd|scretake|photoview|open|openproj|openarkproj)$/;
+const lastTap=new Map();
+document.addEventListener("click", function(ev){
   const t=ev.target.closest("[data-act]");
   if(!t) return;
+  if(!FREE_ACTS.test(t.dataset.act)){
+    const key=JSON.stringify(t.dataset), now=Date.now();
+    if(now-(lastTap.get(key)||0) < 400) return;
+    lastTap.set(key, now);
+    if(lastTap.size>200) lastTap.clear();
+  }
+  Promise.resolve(onAction(ev, t)).catch(function(e){ console.error(e); });
+});
+async function onAction(ev, t){
   const act=t.dataset.act;
   dirty.clear();
   if(act==="noop") return;
@@ -5412,7 +5432,7 @@ document.addEventListener("click", async function(ev){
     if(S.targetEmp===id) await selectEmployee(S.me.id);
     closeModal(); render(); return;
   }
-});
+}
 
 document.addEventListener("change", async function(ev){
   if(ev.target.classList && ev.target.classList.contains("inv") && ev.target.dataset.p){

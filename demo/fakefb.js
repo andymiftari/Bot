@@ -60,7 +60,8 @@ const snap = (path) => {
   const id = path.split("/").pop(), d = data[path];
   return {id, exists: () => d !== undefined, data: () => clone(d)};
 };
-const later = fn => new Promise(r => setTimeout(() => r(fn()), 8));
+/* window.__demoLatency gör databasen långsam i tester, som ett segt nät. */
+const later = fn => new Promise(r => setTimeout(() => r(fn()), window.__demoLatency || 8));
 
 function test(val, op, v){
   switch(op){
