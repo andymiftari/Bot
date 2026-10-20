@@ -1,0 +1,65 @@
+/* Regeltest för firestore.rules (sakerhet), körs i Firebase-emulatorn:
+     cd <mapp med firestore.rules, firebase.json och npm i @firebase/rules-unit-testing firebase firebase-tools>
+     npx firebase emulators:exec --only firestore --project demo-test "node sakerhet.mjs"
+   firebase.json: {"firestore":{"rules":"firestore.rules"},"emulators":{"firestore":{"port":8085}}} */
+import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
+import { doc, getDoc, setDoc, getDocs, collection, query, where, updateDoc } from "firebase/firestore";
+import fs from "fs";
+const env=await initializeTestEnvironment({projectId:"demo-sec", firestore:{rules:fs.readFileSync("firestore.rules","utf8"), host:"127.0.0.1", port:8085}});
+await env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();
+  await setDoc(doc(db,"meta/app"),{ownerUid:"own"});
+  await setDoc(doc(db,"employees/adm"),{role:"admin",name:"Adm",username:"adm"});
+  await setDoc(doc(db,"employees/a"),{role:"arbetare",name:"A",username:"a"});
+  await setDoc(doc(db,"projects/p1"),{name:"P1",kund:"Kund",rate:650});
+  for(const s of ["app","lists","offert","aikunskap"]) await setDoc(doc(db,"settings/"+s),{x:1});
+  await setDoc(doc(db,"vehicles/v1"),{regnr:"ABC123"});
+  await setDoc(doc(db,"usernames/a"),{email:"a@timmar.app",name:"A"});
+  await setDoc(doc(db,"months/a__2026-10"),{empId:"a",month:"2026-10",days:{"2026-10-01":[{h:8}],"2026-10-20":[{h:8}]},locked:{"2026-10-01":true}});
+  await setDoc(doc(db,"trips/t1"),{id:"t1",vehicleId:"v1",empId:"a",empName:"A",startKm:1000,status:"open",endKm:0,endAt:"",km:0,photoEnd:"",hasEnd:false,kind:"tjanst"});
+});
+const ctx=u=>env.authenticatedContext(u).firestore();
+const x=ctx("x"), a=ctx("a"), adm=ctx("adm"), own=ctx("own"), anon=env.unauthenticatedContext().firestore();
+let bad=0;
+const r=async(n,p,want)=>{ let ok; try{ await p; ok=true;}catch(e){ ok=false; } const pass=ok===want; if(!pass) bad++; console.log((pass?"✓ ":"✗ ")+(ok?"tillåts":"nekas ")+"  "+n+(pass?"":"   <-- FEL, ska "+(want?"tillåtas":"nekas"))); };
+console.log("— främling med Firebase-konto men utan profil —");
+await r("skapar egen profil som arbetare", setDoc(doc(x,"employees/x"),{role:"arbetare",name:"X"}), false);
+await r("skapar egen profil som admin", setDoc(doc(x,"employees/x"),{role:"admin",name:"X"}), false);
+await r("läser ett projekt", getDoc(doc(x,"projects/p1")), false);
+await r("listar projekt", getDocs(collection(x,"projects")), false);
+await r("läser settings/app", getDoc(doc(x,"settings/app")), false);
+await r("läser AI-kunskapen", getDoc(doc(x,"settings/aikunskap")), false);
+await r("listar bilar", getDocs(collection(x,"vehicles")), false);
+await r("lägger upp en resa", setDoc(doc(x,"trips/tx"),{id:"tx",empId:"x",status:"open",startKm:1}), false);
+await r("lägger upp en tidrapport", setDoc(doc(x,"months/x__2026-10"),{empId:"x",month:"2026-10",days:{}}), false);
+await r("skickar in en vecka", setDoc(doc(x,"approvals/x__2026-W43"),{empId:"x",week:"2026-W43",status:"inskickad"}), false);
+await r("läser meta/app (behövs före inloggning)", getDoc(doc(x,"meta/app")), true);
+await r("slår upp ett kontonamn", getDoc(doc(anon,"usernames/a")), true);
+await r("skickar supportförfrågan utan inloggning", setDoc(doc(anon,"support/s1"),{message:"Hjälp",at:"z"}), true);
+console.log("— arbetare —");
+await r("läser projekt", getDocs(collection(a,"projects")), true);
+await r("läser settings/app och lists", Promise.all([getDoc(doc(a,"settings/app")),getDoc(doc(a,"settings/lists"))]), true);
+await r("läser offertuppgifter", getDoc(doc(a,"settings/offert")), false);
+await r("läser AI-kunskapen (inköpspriser)", getDoc(doc(a,"settings/aikunskap")), false);
+await r("listar bilar", getDocs(collection(a,"vehicles")), true);
+await r("lägger upp egen resa", setDoc(doc(a,"trips/ta"),{id:"ta",empId:"a",status:"open",startKm:5}), true);
+await r("ny månad i tidrapporten", setDoc(doc(a,"months/a__2026-11"),{empId:"a",month:"2026-11",days:{"2026-11-02":[{h:8}]}}), true);
+await r("ändrar olåst dag", updateDoc(doc(a,"months/a__2026-10"),{"days.2026-10-20":[{h:6}]}), true);
+await r("ändrar låst dag", updateDoc(doc(a,"months/a__2026-10"),{"days.2026-10-01":[{h:2}]}), false);
+await r("skickar in egen vecka", setDoc(doc(a,"approvals/a__2026-W43"),{empId:"a",week:"2026-W43",status:"inskickad"}), true);
+await r("skickar in med fel vecka i fältet", setDoc(doc(a,"approvals/a__2026-W44"),{empId:"a",week:"2026-W40",status:"inskickad"}), false);
+await r("attesterar själv", setDoc(doc(a,"approvals/a__2026-W45"),{empId:"a",week:"2026-W45",status:"godkand"}), false);
+await r("skapar profil åt någon annan", setDoc(doc(a,"employees/z"),{role:"arbetare",name:"Z"}), false);
+await r("höjer sin egen roll", updateDoc(doc(a,"employees/a"),{role:"admin"}), false);
+await r("byter egen e-post i profilen", updateDoc(doc(a,"employees/a"),{email:"a@firma.se"}), true);
+console.log("— superadmin —");
+await r("lägger upp ny arbetare", setDoc(doc(adm,"employees/n1"),{role:"arbetare",name:"N1",authEmail:"n1@timmar.app"}), true);
+await r("lägger upp ny admin", setDoc(doc(adm,"employees/n2"),{role:"admin",name:"N2"}), true);
+await r("läser AI-kunskapen", getDoc(doc(adm,"settings/aikunskap")), true);
+await r("läser offertuppgifter", getDoc(doc(adm,"settings/offert")), true);
+console.log("— den som satte upp firman, innan profilen finns —");
+await r("skriver sin första profil", setDoc(doc(own,"employees/own"),{role:"admin",name:"Ägare"}), true);
+await r("läser projekt", getDoc(doc(own,"projects/p1")), true);
+console.log(bad? "\n"+bad+" FEL":"\nAlla regler stämmer.");
+await env.cleanup();
+process.exit(bad?1:0);

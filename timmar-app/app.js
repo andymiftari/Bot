@@ -1418,6 +1418,45 @@ function shrinkImage(file, max, q){
     img.src=url;
   });
 }
+/* "Att göra" i projektet – beställa material, boka lift, ta mått. Alla med
+   profil lägger till och bockar av; det syns vem som gjorde vad. Listan är
+   live, så en avbockning hos en kollega syns direkt. */
+function watchTasks(pid){
+  if(S.tasksFor===pid) return;
+  stopTasks();
+  S.tasksFor=pid; S.projTasks=null;
+  S.tasksUnsub=Store.watch("projtasks","projectId",pid,function(rows){
+    if(S.tasksFor!==pid) return;
+    S.projTasks=rows; scheduleRender();
+  });
+}
+function stopTasks(){ try{ S.tasksUnsub && S.tasksUnsub(); }catch(e){} S.tasksUnsub=null; S.tasksFor=null; S.projTasks=null; }
+function taskPanel(pid, open){
+  watchTasks(pid);
+  const all=S.projTasks;
+  const todo=(all||[]).filter(x=>!x.done).sort((a,b)=>String(a.at).localeCompare(String(b.at)));
+  const done=(all||[]).filter(x=>x.done).sort((a,b)=>String(b.doneAt).localeCompare(String(a.doneAt)));
+  const item=function(x){
+    const mayDel=isAdmin() || x.byId===S.me.id;
+    const who=x.done ? '✓ '+esc(x.doneByName||"")+' · '+esc(shortDay(x.doneAt))
+                     : esc(x.byName||"")+' · '+esc(shortDay(x.at));
+    return '<li class="task'+(x.done?' done':'')+'">'
+      + '<button class="task-box" role="checkbox" aria-checked="'+(!!x.done)+'" data-act="tasktoggle" data-k="'+esc(x.id)+'" aria-label="'+(x.done?'Ångra: ':'Klart: ')+esc(x.text)+'"></button>'
+      + '<span class="task-text"><span class="task-title">'+esc(x.text)+'</span><span class="note">'+who+'</span></span>'
+      + (mayDel?'<button class="btn sm ghost" data-act="taskdel" data-k="'+esc(x.id)+'" aria-label="Ta bort '+esc(x.text)+'">✕</button>':'')
+      + '</li>';
+  };
+  const body = all===null ? '<p class="note">Hämtar listan…</p>'
+    : (todo.length||done.length)
+      ? '<ul class="tasks">'+todo.map(item).join("")+done.map(item).join("")+'</ul>'
+      : '<p class="note">Inget att göra än. Skriv upp sådant som inte får glömmas – beställa material, boka lift, ta mått, skicka på förzinkning.</p>';
+  return '<div class="panel" style="margin-bottom:14px"><div class="hd"><div><h3>Att göra</h3>'
+    + '<span class="note">'+(all===null?'':todo.length?todo.length+' kvar'+(done.length?' · '+done.length+' klara':''):(done.length?'Allt klart':''))+'</span></div></div>'
+    + '<div style="padding:4px 16px 14px">'+body
+    + (open?'<div class="task-add"><input id="task-new" type="text" maxlength="200" autocomplete="off" enterkeyhint="done" placeholder="Lägg till, t.ex. Beställ plattstång 40×8" aria-label="Ny punkt">'
+      + '<button class="btn" data-act="taskadd" data-p="'+esc(pid)+'">Lägg till</button></div>':'')
+    + '</div></div>';
+}
 function photoPanel(pid){
   if(S.projPhotosFor!==pid){
     S.projPhotosFor=pid; S.projPhotos=null;
@@ -1615,6 +1654,7 @@ function projectDetail(pid){
           + budgetBar(projActual(p).total, projQuote(p).total, false)+'</div>'
         : '<p class="note" style="margin-top:10px">Inget offererat pris inlagt. Tryck på <b>Ändra projekt</b> för att lägga in kalkylen.</p>'):'')
     + '</div>'
+    + taskPanel(pid, pStatus(p)!=="avslutad")
     + (admin&&projQuote(p).total>0?'<div class="panel" style="margin-bottom:14px"><div class="hd"><h3>Kalkyl mot utfall</h3>'
       + '<span class="note">Hela projektet, oavsett vald period</span></div>'+quoteCompareTable(p)+'</div>':'')
     + '<div class="kpis" style="margin-bottom:14px">'
@@ -2829,7 +2869,7 @@ function remindBanner(){
    öppnar appen på dygnet. Ingen behöver komma ihåg något. */
 const BACKUP_KEEP_DAYS = 60;
 const BACKUP_CHUNK = 700000;
-const BACKUP_COLLS = ["employees","projects","months","costs","approvals","archive","reminders","vehicles","trips","offers"];
+const BACKUP_COLLS = ["employees","projects","months","costs","approvals","archive","reminders","vehicles","trips","offers","projtasks"];
 
 async function snapshotAll(){
   const data={};
@@ -5341,6 +5381,37 @@ async function onAction(ev, t){
     closeModal(); render(); return;
   }
   if(act==="projqclear"){ S.projQ=""; dirty.delete("proj-q"); render(); const i=document.getElementById("proj-q"); if(i) i.focus(); return; }
+  if(act==="taskadd"){
+    const inp=document.getElementById("task-new"), text=String((inp||{}).value||"").trim().slice(0,200);
+    if(!text){ if(inp) inp.focus(); return; }
+    const id=String(Date.now())+"-"+uid(), now=new Date().toISOString();
+    const body={id:id, projectId:t.dataset.p, text:text, done:false, byId:S.me.id, byName:S.me.name, at:now,
+      doneById:"", doneByName:"", doneAt:""};
+    (S.projTasks||(S.projTasks=[])).push(body);
+    /* Lämna rutan först: Chrome skickar annars "change" från den gamla rutan
+       mitt i omritningen, och texten skulle fyllas i igen. */
+    if(inp) inp.blur();
+    dirty.delete("task-new"); render();
+    const i2=document.getElementById("task-new"); if(i2){ i2.value=""; i2.focus(); }
+    await guard(function(){ return Store.set("projtasks/"+id, body); });
+    return;
+  }
+  if(act==="tasktoggle"){
+    const x=(S.projTasks||[]).find(y=>y.id===t.dataset.k); if(!x) return;
+    const done=!x.done, now=new Date().toISOString();
+    const body=Object.assign({}, x, {done:done, doneById:done?S.me.id:"", doneByName:done?S.me.name:"", doneAt:done?now:""});
+    delete body._id;
+    Object.assign(x, body); render();
+    await guard(function(){ return Store.set("projtasks/"+x.id, body); });
+    return;
+  }
+  if(act==="taskdel"){
+    const x=(S.projTasks||[]).find(y=>y.id===t.dataset.k); if(!x) return;
+    if(!confirmTwice("taskdel"+x.id)){ t.textContent="Tryck igen"; return; }
+    S.projTasks=S.projTasks.filter(y=>y.id!==x.id); render();
+    await guard(function(){ return Store.del("projtasks/"+x.id); });
+    return;
+  }
   if(act==="openproj"){ S.projSel=t.dataset.p; S.projPhotosFor=null; render(); return; }
   if(act==="openarkproj"){ S.tab="projekt"; await loadProjectData(); S.projSel=t.dataset.p; S.projPhotosFor=null; render(); window.scrollTo(0,0); return; }
   if(act==="backproj"){ S.projSel=null; render(); return; }
@@ -5704,6 +5775,7 @@ document.addEventListener("keydown", function(ev){
   }
   else if(id==="e-name"||id==="e-user"||id==="e-pw"){ ev.preventDefault(); click("[data-act='saveemp']"); }
   else if(id==="ph-note"){ ev.preventDefault(); click("[data-act='photoup']"); }
+  else if(id==="task-new"){ ev.preventDefault(); click("[data-act='taskadd']"); }
   else if(id==="p-name"||id==="p-kod"||id==="p-kund"||id==="p-rate"||id==="p-adress"){ ev.preventDefault(); click("[data-act='saveproj']"); }
   else if(id==="m-old"||id==="m-new"){ ev.preventDefault(); click("[data-act='changepw']"); }
 });
@@ -5752,7 +5824,7 @@ async function boot(){
   onAuthStateChanged(auth, async function(user){
     if(S.creating) return;              /* uppstarten sköter inloggningen själv */
     if(!user){
-      stopLive(); S.everyMonth=[]; S.costs=[];
+      stopLive(); stopTasks(); S.everyMonth=[]; S.costs=[];
       S.me=null; S.targetEmp=null; S.months=[]; S.approvals=[]; S.busy=false;
       S.pendingUser=null; S.fixErr=""; S.fixMsg="";
       if(S.phase!=="onboarding") S.phase="ready";

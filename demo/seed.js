@@ -210,6 +210,19 @@ export function seed(){
            {task:"Svetsning av grindram", unit:"st", hours:6}],
     rules:"Vi räknar alltid minst 4 timmar för montering. Lägg 1 timme ritning på allt."};
 
+  /* "Att göra" i projekten */
+  [["balkong-sodra","Beställ plattstång 40x8, 480 m","u-andy",9,null],
+   ["balkong-sodra","Boka saxlift vecka 45","u-sara",4,null],
+   ["balkong-sodra","Skicka räcken 1–6 på förzinkning","u-erik",12,["u-mats",6]],
+   ["balkong-sodra","Ta mått på balkong 7–12","u-mats",15,["u-mats",14]],
+   ["trappracke-storgatan","Hämta handledarhållare hos Beslag & Co","u-anna",2,null],
+   ["stalbalk-garage","Kontrollera upplag med konstruktören","u-andy",5,null]
+  ].forEach((t, i) => {
+    const id = "uppg-" + (i + 1), by = D["employees/" + t[2]].name;
+    D["projtasks/" + id] = {id, projectId:t[0], text:t[1], done:!!t[4], byId:t[2], byName:by, at:iso(addDays(today, -t[3])),
+      doneById:t[4] ? t[4][0] : "", doneByName:t[4] ? D["employees/" + t[4][0]].name : "", doneAt:t[4] ? iso(addDays(today, -t[4][1])) : ""};
+  });
+
   D["settings/app"] = {};
   D["settings/lists"] = {};
   return D;

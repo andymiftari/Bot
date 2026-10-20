@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Säkerhetsregler för Ellingesmide (version 2.3).
+// Säkerhetsregler för Ellingesmide (version 2.4).
 // Klistra in hela den här filen i Firebase-konsolen:
 //   Firestore Database  ->  Rules  ->  ersätt allt  ->  Publish
 //
@@ -318,6 +318,31 @@ service cloud.firestore {
             && request.resource.data.data.size() < 900000
             && projExists(request.resource.data.projectId));
       allow update: if false;
+      allow delete: if isAdmin()
+        || (isEmployee() && resource.data.byId == request.auth.uid);
+    }
+
+    // "Att göra" i projekten. Alla med profil ser listan, lägger till punkter
+    // och bockar av. En arbetare får bara ändra avbockningen – aldrig texten
+    // eller vem som skrev den – och bockar bara av i eget namn. Den som skrev
+    // en punkt och superadmin kan ta bort den.
+    match /projtasks/{id} {
+      allow read: if isStaff();
+      allow create: if isAdmin()
+        || (isEmployee()
+            && request.resource.data.keys().hasOnly(['id', 'projectId', 'text', 'done', 'byId', 'byName', 'at', 'doneById', 'doneByName', 'doneAt'])
+            && request.resource.data.id == id
+            && request.resource.data.byId == request.auth.uid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 200
+            && request.resource.data.done == false
+            && projExists(request.resource.data.projectId));
+      allow update: if isAdmin()
+        || (isEmployee()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done', 'doneById', 'doneByName', 'doneAt'])
+            && request.resource.data.done is bool
+            && (request.resource.data.done == false || request.resource.data.doneById == request.auth.uid));
       allow delete: if isAdmin()
         || (isEmployee() && resource.data.byId == request.auth.uid);
     }

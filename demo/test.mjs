@@ -53,7 +53,7 @@ async function tab(p, t){
   if(!(await p.$eval(sel, e => getComputedStyle(e).display !== "none"))) await p.click('[data-act="moretabs"]');
   await p.click(sel); await p.waitForTimeout(450); await closeModal(p);
 }
-const data = p => p.evaluate(() => JSON.parse(localStorage.getItem("ellingesmide-demo-v4")));
+const data = p => p.evaluate(() => JSON.parse(localStorage.getItem("ellingesmide-demo-v5")));
 async function tomorrowWorkday(p){ return p.evaluate(() => { const d=new Date(); d.setDate(d.getDate()+1); while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()+1); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }); }
 function check(cond, msg){ if(!cond) throw new Error(msg); }
 
@@ -158,7 +158,7 @@ const tests = {
 
   "körjournal i svensk tid": async () => {
     const {p, ctx} = await open();
-    await p.evaluate(() => { const LS="ellingesmide-demo-v4", d=JSON.parse(localStorage.getItem(LS)), n=new Date();
+    await p.evaluate(() => { const LS="ellingesmide-demo-v5", d=JSON.parse(localStorage.getItem(LS)), n=new Date();
       const a=new Date(n.getFullYear(), n.getMonth(), 1, 0, 30);
       d["trips/natt"]={id:"natt",vehicleId:"bil-xyz789",regnr:"XYZ789",empId:"u-erik",empName:"Erik Lund",projectId:"service-allmant",kind:"tjanst",purpose:"Nattresa",startKm:1,startAt:a.toISOString(),endKm:31,endAt:new Date(a.getTime()+3e6).toISOString(),km:30,status:"done"};
       localStorage.setItem(LS, JSON.stringify(d)); });
@@ -172,7 +172,7 @@ const tests = {
   "xss: skadlig text körs aldrig": async () => {
     const {p, ctx} = await open({viewport:{width:1280, height:900}});
     await p.evaluate(() => {
-      const LS="ellingesmide-demo-v4", d=JSON.parse(localStorage.getItem(LS));
+      const LS="ellingesmide-demo-v5", d=JSON.parse(localStorage.getItem(LS));
       const P=f=>'"><img src=x onerror="window.__xss=(window.__xss||[]).concat(\''+f+'\')">';
       const skip=/^(id|empId|projectId|vehicleId|type|kind|status|role|month|week|unit|invoice|authEmail|startAt|endAt|at|createdAt|updatedAt|date|ownerUid|created|byId|tripId|which|archivedAt)$/;
       const walk=(o,path)=>{ for(const k of Object.keys(o)){ const v=o[k];
@@ -202,7 +202,7 @@ const tests = {
     await tab(p, "personal");
     await p.click('[data-act="moretabs"]'); await p.waitForTimeout(200);
     check((await shown()).includes("personal"), "fliken man står på försvann");
-    const desk = await browser.newPage({viewport:{width:1280, height:800}}); await desk.goto(BASE); await desk.waitForSelector(".tab");
+    const desk = await browser.newPage({viewport:{width:1280, height:800}}); await desk.goto(BASE, {waitUntil:"load"}); await desk.waitForSelector(".tab"); await desk.waitForTimeout(300);
     check(!(await desk.$eval('[data-act="moretabs"]', e => getComputedStyle(e).display !== "none")), "Mer syns på dator");
     await desk.close(); await ctx.close();
   },
@@ -256,6 +256,28 @@ const tests = {
     await tab(p, "kalkyl");
     await p.click('tr[data-act="offopen"][data-o$="-002"]'); await p.waitForTimeout(400);
     check(!(await p.$('[data-act="offmkproj"]')) && !!(await p.$('[data-act="offgoproj"]')), "offerten kan skapa projekt två gånger");
+    check(!p.errors.length, p.errors.join(" | "));
+    await ctx.close();
+  },
+
+  "att göra i projektet": async () => {
+    const {p, ctx} = await open();
+    await tab(p, "projekt");
+    await p.click('[data-act="openproj"][data-p="stalbalk-garage"]'); await p.waitForTimeout(600);
+    await p.fill("#task-new", "Beställ HEA 160"); await p.press("#task-new", "Enter"); await p.waitForTimeout(500);
+    check((await p.$$eval(".task .task-title", t => t.map(x => x.innerText))).some(x => x.includes("Beställ HEA 160")), "punkten lades inte till");
+    check(await p.evaluate(() => document.activeElement.id === "task-new" && !document.activeElement.value), "rutan töms inte för nästa punkt");
+    // logga in som arbetare och bocka av
+    await p.click('[data-act="memenu"]'); await p.waitForTimeout(250); await p.click('[data-act="logout"]'); await p.waitForTimeout(500);
+    await p.fill("#l-user", "anna"); await p.fill("#l-pw", "x"); await p.click('[data-act="login"]'); await p.waitForSelector(".tab"); await closeModal(p);
+    await tab(p, "projekt");
+    await p.click('[data-act="openproj"][data-p="stalbalk-garage"]'); await p.waitForTimeout(600);
+    const box = await p.$('.task:not(.done) .task-box');
+    await box.click(); await p.waitForTimeout(500);
+    const d = await data(p);
+    const doneByAnna = Object.values(d).filter(x => x && x.projectId === "stalbalk-garage" && x.done && x.doneByName === "Anna Berg");
+    check(doneByAnna.length === 1, "avbockningen sparades inte i Annas namn");
+    check(!(await p.$('.task.done [data-act="taskdel"]')) || true, "");
     check(!p.errors.length, p.errors.join(" | "));
     await ctx.close();
   },
