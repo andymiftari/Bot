@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Säkerhetsregler för Ellingesmide (version 2.2).
+// Säkerhetsregler för Ellingesmide (version 2.3).
 // Klistra in hela den här filen i Firebase-konsolen:
 //   Firestore Database  ->  Rules  ->  ersätt allt  ->  Publish
 //
@@ -308,6 +308,25 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if isAdmin()
         || (isEmployee() && resource.data.byId == request.auth.uid);
+    }
+
+    // Timmar per projekt med fast pris, en rad per person:
+    // projhours/{projekt} = {byEmp: {uid: timmar}}. En arbetare får bara läsa
+    // sina egna tidrapporter, så summan för hela projektet finns här. Var och
+    // en får bara ändra sin egen rad; superadmin får rätta alla.
+    match /projhours/{pid} {
+      allow read: if isEmployee() || isAdmin();
+      allow create: if isAdmin()
+        || (isEmployee() && projExists(pid)
+            && request.resource.data.keys().hasOnly(['byEmp', 'updatedAt'])
+            && request.resource.data.byEmp.keys().hasOnly([request.auth.uid])
+            && request.resource.data.byEmp[request.auth.uid] is number);
+      allow update: if isAdmin()
+        || (isEmployee()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['byEmp', 'updatedAt'])
+            && request.resource.data.byEmp.diff(resource.data.byEmp).affectedKeys().hasOnly([request.auth.uid])
+            && request.resource.data.byEmp[request.auth.uid] is number);
+      allow delete: if isAdmin();
     }
 
     // Dagliga säkerhetskopior av hela databasen. Bara superadmin och support
