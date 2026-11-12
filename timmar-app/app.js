@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.13.2";
+export const APP_VERSION = "2.14.0";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -308,6 +308,52 @@ function parseKorHash(){
   }catch(e){ return ""; }
 }
 S.deepKor = parseKorHash();
+
+/* ===== Egen adress för varje flik =====
+   Varje flik får en riktig adress (t.ex. /veckoattest), och ett öppnat projekt
+   läggs till som ?p=<id>. Då fungerar telefonens bakåtknapp som på en vanlig
+   hemsida: den går tillbaka till förra fliken i stället för att lämna appen.
+   Cloudflare Pages lämnar ut index.html för alla okända adresser, så det går
+   också att ladda om sidan eller spara en flik som bokmärke. */
+const ROUTES={tid:"tidrapport", kor:"korjournal", projekt:"projekt", statistik:"statistik",
+  kalkyl:"kalkyl", attest:"veckoattest", arkiv:"arkiv", personal:"personal", listor:"listor",
+  inkorg:"inkorg", utseende:"utseende"};
+const ADMIN_TABS=["attest","personal","arkiv","listor","kalkyl","statistik"];
+const SUPPORT_TABS=["inkorg","utseende"];
+const APP_BASE=(function(){ try{ return new URL(".", import.meta.url).pathname; }catch(e){ return "/"; } })();
+function tabAllowed(t){
+  if(!ROUTES[t]) return false;
+  if(SUPPORT_TABS.indexOf(t)>=0) return isSupport();
+  if(ADMIN_TABS.indexOf(t)>=0) return isAdmin();
+  return true;
+}
+function readRoute(){
+  let seg="";
+  try{
+    const path=decodeURIComponent(location.pathname);
+    seg=(path.indexOf(APP_BASE)===0 ? path.slice(APP_BASE.length) : path.replace(/^\/+/,"")).split("/")[0].toLowerCase();
+  }catch(e){}
+  let tab=null;
+  Object.keys(ROUTES).forEach(function(k){ if(ROUTES[k]===seg) tab=k; });
+  let proj=null;
+  try{ proj=new URLSearchParams(location.search).get("p"); }catch(e){}
+  return {tab:tab, proj:proj||null};
+}
+function routeUrl(){
+  return APP_BASE+(ROUTES[S.tab]||ROUTES.tid)
+    +(S.tab==="projekt" && S.projSel ? "?p="+encodeURIComponent(S.projSel) : "");
+}
+let navReplace=false;
+function syncUrl(){
+  if(!S.me) return;
+  const want=routeUrl();
+  const cur=location.pathname+location.search;
+  if(want!==cur){
+    try{ history[navReplace?"replaceState":"pushState"]({tab:S.tab}, "", want+(navReplace?location.hash:"")); }catch(e){}
+  }
+  navReplace=false;
+}
+try{ if("scrollRestoration" in history) history.scrollRestoration="manual"; }catch(e){}
 
 const app = document.getElementById("app");
 const modalRoot = document.getElementById("modal-root");
@@ -4313,6 +4359,31 @@ function confirmTwice(key){
   twice[key]=now; return false;
 }
 
+/* Hämtar det en flik behöver när man går till den (klick eller bakåtknapp). */
+async function loadTab(){
+  if(S.tab==="attest"){ await loadMonthsFor(weekMonths(wkey(S.cursor))); await loadWeekApprovals(); await loadReminderData(); }
+  if(S.tab==="personal"){ await loadMonthsFor(weekMonths(wkey(S.cursor))); }
+  if(S.tab==="projekt"||S.tab==="statistik"){ await loadProjectData(); }
+  if(S.tab==="arkiv"){ await loadArchive(); await loadBackups(); await loadProjectData(); }
+  if(S.tab==="inkorg"){ await loadInbox(); }
+  if(S.tab==="kor"){ await loadKor(); }
+  if(S.tab==="kalkyl"){ S.off=null; S.offSel=null; await loadOffers(); }
+}
+/* Bakåt- och framåtknappen. Är en dialog öppen stänger bakåt bara dialogen. */
+window.addEventListener("popstate", async function(){
+  if(!S.me) return;
+  if(inModal()){ closeModal(); syncUrl(); return; }
+  const r=readRoute();
+  const tab=(r.tab && tabAllowed(r.tab)) ? r.tab : "tid";
+  try{
+    if(tab!==S.tab){ S.tab=tab; S.projSel=null; await loadTab(); }
+    S.projSel = tab==="projekt" ? r.proj : null;
+    S.projPhotosFor=null;
+  }catch(e){ console.error(e); }
+  navReplace=true;
+  render(); window.scrollTo(0,0);
+});
+
 /* ============================ render ============================ */
 let lastViewTab=null;
 function render(){
@@ -4325,6 +4396,7 @@ function render(){
     const u=document.getElementById("l-user"); if(u && !S.busy) u.focus();
     return;
   }
+  if(S.tab!=="lon" && !tabAllowed(S.tab)) S.tab="tid";
   let body;
   if(S.tab==="attest" && isAdmin()) body=viewAttest();
   else if(S.tab==="personal" && isAdmin()) body=viewPersonal();
@@ -4365,6 +4437,7 @@ function render(){
     }
   }
   if(S.tab==="kalkyl" && S.off) offerLive();
+  syncUrl();
   prefsSave();
 }
 /* Realtidsuppdateringar kommer ofta i par (lokal sparning + serverns svar).
@@ -4603,6 +4676,7 @@ document.addEventListener("click", async function(ev){
     closeModal();
     S.unsubs.forEach(x=>{try{x();}catch(e){}}); S.unsubs=[];
     await signOut(auth);
+    try{ history.replaceState(null,"",APP_BASE); }catch(e){}
     return;
   }
   if(!S.me) return;
@@ -4613,15 +4687,8 @@ document.addEventListener("click", async function(ev){
   /* --- navigation --- */
   if(act==="tab"){
     S.tab=t.dataset.v; S.projSel=null;
-    if(S.tab==="attest"){ await loadMonthsFor(weekMonths(wkey(S.cursor))); await loadWeekApprovals(); await loadReminderData(); }
-    if(S.tab==="personal"){ await loadMonthsFor(weekMonths(wkey(S.cursor))); }
-    if(S.tab==="projekt"||S.tab==="statistik"){ await loadProjectData(); }
-    if(S.tab==="arkiv"){ await loadArchive(); await loadBackups(); await loadProjectData(); }
-    if(S.tab==="inkorg"){ await loadInbox(); }
-    if(S.tab==="kor"){ await loadKor(); }
-    if(S.tab==="kalkyl"){ S.off=null; S.offSel=null; await loadOffers(); }
-    if(S.tab==="lon"){ await loadLon(); }
-    render(); return;
+    await loadTab();
+    render(); window.scrollTo(0,0); return;
   }
 
   /* --- körjournal --- */
@@ -5667,6 +5734,10 @@ async function enterApp(user){
     await selectEmployee(S.me.id);
     watchProjHours();
     syncProjHours(S.me.id).catch(function(e){ console.error("projhours", e); });
+    /* Öppnas appen på en flikadress (t.ex. /veckoattest) visas den fliken. */
+    const r=readRoute();
+    if(r.tab && tabAllowed(r.tab)){ S.tab=r.tab; S.projSel = r.tab==="projekt" ? r.proj : null; }
+    navReplace=true;
     /* Har någon skannat QR-koden i bilen hoppar vi direkt till körjournalen. */
     if(S.deepKor) S.tab="kor";
     if(S.tab==="kor") await loadKor();
