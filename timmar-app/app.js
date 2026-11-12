@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.13.1";
+export const APP_VERSION = "2.13.2";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -730,7 +730,7 @@ function topbar(){
   const me=S.me;
   /* Körjournalen ligger direkt efter tidrapporten och finns för alla roller. */
   const tabs = isAdmin()
-    ? [["tid",cfg("tabs.tid")],["kor",cfg("tabs.kor")],["projekt",cfg("tabs.projekt")],["statistik",cfg("tabs.statistik")],["kalkyl",cfg("tabs.kalkyl")],["attest",cfg("tabs.attest")],["lon",cfg("tabs.lon")],
+    ? [["tid",cfg("tabs.tid")],["kor",cfg("tabs.kor")],["projekt",cfg("tabs.projekt")],["statistik",cfg("tabs.statistik")],["kalkyl",cfg("tabs.kalkyl")],["attest",cfg("tabs.attest")],
        ["arkiv",cfg("tabs.arkiv")],["personal",cfg("tabs.personal")],["listor",cfg("tabs.listor")]]
       .concat(isSupport()?[["inkorg",cfg("tabs.inkorg")],["utseende",cfg("tabs.utseende")]]:[])
     : [["tid",cfg("tabs.mitt")],["kor",cfg("tabs.kor")],["projekt",cfg("tabs.projekt")]];
@@ -1845,7 +1845,7 @@ function viewUtseende(){
     + '</div></div>'
     + '<div class="panel" style="padding:16px"><h3>Namn på flikarna</h3><div class="stack" style="margin-top:12px">'
     + [["tid","Tidrapport (superadmin)"],["mitt","Tidrapport (arbetare)"],["projekt","Projekt"],
-       ["statistik","Statistik"],["kalkyl","Kalkyl"],["attest","Veckoattest"],["lon","Löneunderlag"],["arkiv","Arkiv"],["personal","Personal"],["inkorg","Inkorg"],["utseende","Utseende"]]
+       ["statistik","Statistik"],["kalkyl","Kalkyl"],["attest","Veckoattest"],["arkiv","Arkiv"],["personal","Personal"],["inkorg","Inkorg"],["utseende","Utseende"]]
        .map(function(t){ return '<label class="fld"><span class="eyebrow">'+t[1]+'</span>'
          + '<input id="b-tab-'+t[0]+'" type="text" value="'+esc(cfg("tabs."+t[0]))+'"></label>'; }).join("")
     + '</div></div>'
@@ -4334,7 +4334,9 @@ function render(){
   else if(S.tab==="utseende" && isSupport()) body=viewUtseende();
   else if(S.tab==="kalkyl" && isAdmin()) body=viewKalkyl();
   else if(S.tab==="statistik" && isAdmin()) body=viewStatistik();
-  else if(S.tab==="lon" && isAdmin()) body=viewLon();
+  /* Fliken Löneunderlag är borttagen (viewLon finns kvar om den behövs igen;
+     redan sparade löneunderlag ligger kvar i Arkiv). */
+  else if(S.tab==="lon"){ S.tab="tid"; body=viewTid(); }
   else if(S.tab==="projekt") body=viewProjekt();
   else if(S.tab==="kor") body=viewKor();
   else body=viewTid();
@@ -4944,7 +4946,7 @@ document.addEventListener("click", async function(ev){
       theme:{mode:val("b-mode")||"auto", ink:/^#[0-9a-fA-F]{3,8}$/.test(ink)?ink:"", ground:cfg("theme.ground","")},
       updatedAt:new Date().toISOString(), updatedBy:S.me.name
     };
-    ["tid","mitt","projekt","statistik","kalkyl","attest","lon","arkiv","personal","inkorg","utseende"].forEach(function(k){
+    ["tid","mitt","projekt","statistik","kalkyl","attest","arkiv","personal","inkorg","utseende"].forEach(function(k){
       body.tabs[k]=val("b-tab-"+k)||DEFAULTS.tabs[k];
     });
     ["arbetare","admin","support"].forEach(function(r){ body.roles[r]=val("b-role-"+r)||DEFAULTS.roles[r]; });
