@@ -17,7 +17,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
 import { qrSvg } from "./qr.js";
 import { legalFooter, viewPrivacy, viewCookies } from "./juridik.js";
 
-export const APP_VERSION = "2.15.0";
+export const APP_VERSION = "2.15.1";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -358,6 +358,13 @@ function syncUrl(){
     try{ history[navReplace?"replaceState":"pushState"]({tab:S.tab}, "", want+(navReplace?location.hash:"")); }catch(e){}
   }
   navReplace=false;
+  /* Fliken syns i webbläsarens titel, så att man hör och ser var man är. */
+  try{
+    const names={tid:cfg("tabs.tid"),kor:cfg("tabs.kor"),projekt:cfg("tabs.projekt"),statistik:cfg("tabs.statistik"),kalkyl:cfg("tabs.kalkyl"),
+      attest:cfg("tabs.attest"),arkiv:cfg("tabs.arkiv"),personal:cfg("tabs.personal"),listor:cfg("tabs.listor"),inkorg:cfg("tabs.inkorg"),utseende:cfg("tabs.utseende")};
+    const nm=S.legalPage ? (S.legalPage==="cookies"?"Cookies och lagring":"Integritetspolicy") : names[S.tab];
+    document.title=(nm?nm+" – ":"")+cfg("appName");
+  }catch(e){}
 }
 S.legalPage=readRoute().legal;
 try{ if("scrollRestoration" in history) history.scrollRestoration="manual"; }catch(e){}
@@ -366,6 +373,15 @@ const app = document.getElementById("app");
 const modalRoot = document.getElementById("modal-root");
 const toastRoot = document.getElementById("toast-root");
 let toastTimer=null;
+/* Tabeller som rullar i sidled ska gå att nå och rulla med tangentbordet. */
+function markScrollRegions(root){
+  root.querySelectorAll(".tblwrap").forEach(function(w){
+    if(w.hasAttribute("tabindex")) return;
+    w.setAttribute("tabindex","0"); w.setAttribute("role","region");
+    const cap=w.closest(".panel") && w.closest(".panel").querySelector("h3");
+    w.setAttribute("aria-label", cap ? "Tabell: "+cap.textContent.trim() : "Tabell");
+  });
+}
 function toast(msg){
   toastRoot.innerHTML='<div class="toast">'+esc(msg)+'</div>';
   clearTimeout(toastTimer);
@@ -1358,7 +1374,7 @@ function viewStatistik(){
   sumQ=r2(sumQ); sumA=r2(sumA);
   return '<div class="bar"><span class="note">Kalkyl mot utfall på alla projekt. Utfallet räknas på all registrerad tid (fakturerbara timmar × timpris) och alla bokförda kostnader. '
     + 'Körning är bokförd milersättning.</span>'
-    + '<label class="fld" style="margin-left:auto"><select id="st-scope">'
+    + '<label class="fld" style="margin-left:auto"><span class="sr-only">Vilka projekt</span><select id="st-scope">'
     + [["oppna","Aktiva och vilande"],["avslutade","Avslutade"],["alla","Alla projekt"]].map(x=>'<option value="'+x[0]+'"'+(scope===x[0]?" selected":"")+'>'+x[1]+'</option>').join("")
     + '</select></label></div>'
     + '<div class="kpis" style="margin-bottom:14px">'
@@ -1788,18 +1804,18 @@ function viewListor(){
   const types=typeKeys().map(k=>Object.assign({key:k}, typeOf(k)));
   const costs=costKeys().map(k=>Object.assign({key:k}, costOf(k)));
   const tRows=types.map(function(t,i){
-    return '<tr><td><input data-lst="t" data-f="label" data-i="'+i+'" type="text" value="'+esc(t.label)+'"></td>'
-      + '<td style="width:90px"><input data-lst="t" data-f="short" data-i="'+i+'" type="text" value="'+esc(t.short)+'" maxlength="4"></td>'
-      + '<td style="width:74px" class="r"><input data-lst="t" data-f="proj" data-i="'+i+'" type="checkbox"'+(t.proj?" checked":"")+'></td>'
-      + '<td style="width:74px" class="r"><input data-lst="t" data-f="bill" data-i="'+i+'" type="checkbox"'+(t.bill?" checked":"")+'></td>'
-      + '<td style="width:74px" class="r"><input data-lst="t" data-f="abs" data-i="'+i+'" type="checkbox"'+(t.abs?" checked":"")+'></td>'
+    return '<tr><td><input aria-label="'+esc("Namn – "+(t.label||"ny rad"))+'" data-lst="t" data-f="label" data-i="'+i+'" type="text" value="'+esc(t.label)+'"></td>'
+      + '<td style="width:90px"><input aria-label="'+esc("Kort – "+(t.label||"ny rad"))+'" data-lst="t" data-f="short" data-i="'+i+'" type="text" value="'+esc(t.short)+'" maxlength="4"></td>'
+      + '<td style="width:74px" class="r"><input aria-label="'+esc("Projekt – "+(t.label||"ny rad"))+'" data-lst="t" data-f="proj" data-i="'+i+'" type="checkbox"'+(t.proj?" checked":"")+'></td>'
+      + '<td style="width:74px" class="r"><input aria-label="'+esc("Fakturerbart – "+(t.label||"ny rad"))+'" data-lst="t" data-f="bill" data-i="'+i+'" type="checkbox"'+(t.bill?" checked":"")+'></td>'
+      + '<td style="width:74px" class="r"><input aria-label="'+esc("Frånvaro – "+(t.label||"ny rad"))+'" data-lst="t" data-f="abs" data-i="'+i+'" type="checkbox"'+(t.abs?" checked":"")+'></td>'
       + '<td class="r"><button class="btn sm ghost" data-act="lstdel" data-lst="t" data-i="'+i+'">Ta bort</button></td></tr>';
   }).join("");
   const cRows=costs.map(function(c,i){
-    return '<tr><td><input data-lst="c" data-f="label" data-i="'+i+'" type="text" value="'+esc(c.label)+'"></td>'
-      + '<td style="width:100px"><input data-lst="c" data-f="unit" data-i="'+i+'" type="text" value="'+esc(c.unit)+'" maxlength="8"></td>'
-      + '<td style="width:120px"><input data-lst="c" data-f="price" data-i="'+i+'" type="text" inputmode="decimal" value="'+esc(fmt(c.price))+'"></td>'
-      + '<td style="width:90px" class="r"><input data-lst="c" data-f="bill" data-i="'+i+'" type="checkbox"'+(c.bill?" checked":"")+'></td>'
+    return '<tr><td><input aria-label="'+esc("Namn – "+(c.label||"ny rad"))+'" data-lst="c" data-f="label" data-i="'+i+'" type="text" value="'+esc(c.label)+'"></td>'
+      + '<td style="width:100px"><input aria-label="'+esc("Enhet – "+(c.label||"ny rad"))+'" data-lst="c" data-f="unit" data-i="'+i+'" type="text" value="'+esc(c.unit)+'" maxlength="8"></td>'
+      + '<td style="width:120px"><input aria-label="'+esc("Pris – "+(c.label||"ny rad"))+'" data-lst="c" data-f="price" data-i="'+i+'" type="text" inputmode="decimal" value="'+esc(fmt(c.price))+'"></td>'
+      + '<td style="width:90px" class="r"><input aria-label="'+esc("Fakturerbart – "+(c.label||"ny rad"))+'" data-lst="c" data-f="bill" data-i="'+i+'" type="checkbox"'+(c.bill?" checked":"")+'></td>'
       + '<td class="r"><button class="btn sm ghost" data-act="lstdel" data-lst="c" data-i="'+i+'">Ta bort</button></td></tr>';
   }).join("");
   return '<div class="bar"><span class="note">Ändra namnen, lägg till egna rader eller ta bort sådant ni inte använder. '
@@ -1936,13 +1952,29 @@ function viewUtseende(){
 
 /* ============================ dialoger ============================ */
 let modalSeq=0;
+/* Dialoger: fokus stannar i dialogen, bakgrunden går inte att nå, rubriken
+   blir dialogens namn och fokus går tillbaka dit man var när den stängs. */
+let modalOpener=null;
 function openModal(html, onMount){
   modalSeq++;
+  if(!modalRoot.innerHTML){ const a=document.activeElement; modalOpener=(a && a!==document.body) ? a : null; }
   modalRoot.innerHTML='<div class="ovl" data-act="ovl"><div class="modal" role="dialog" aria-modal="true">'+html+'</div></div>';
+  const dlg=modalRoot.querySelector(".modal"), h=dlg && dlg.querySelector("h1,h2,h3");
+  if(h){ if(!h.id) h.id="dlg-title-"+modalSeq; dlg.setAttribute("aria-labelledby", h.id); }
+  app.inert=true;
+  markScrollRegions(modalRoot);
   if(onMount) onMount();
+  if(dlg && !dlg.contains(document.activeElement)){
+    const f=dlg.querySelector("input:not([type=hidden]):not([disabled]),select,textarea,button:not([disabled])");
+    if(f) f.focus({preventScroll:true});
+  }
   return modalSeq;
 }
-const closeModal = () => { stopScan(); S.scan=null; modalRoot.innerHTML=""; };
+const closeModal = () => {
+  stopScan(); S.scan=null; modalRoot.innerHTML=""; app.inert=false;
+  const o=modalOpener; modalOpener=null;
+  if(o && document.contains(o)) try{ o.focus({preventScroll:true}); }catch(e){}
+};
 const inModal = () => !!modalRoot.innerHTML;
 
 function dayModal(emp, ds){
@@ -3339,7 +3371,7 @@ function importModal(pid, rows, source){
 /* ============================ support ============================ */
 function supportBar(){
   return '<div class="supportbar">'
-    + '<span class="note">'+esc(cfg("appName"))+' '+APP_VERSION+'</span><span class="dotsep">·</span>'
+    + '<span class="note">'+esc(cfg("appName"))+' '+APP_VERSION+'</span><span class="dotsep" aria-hidden="true">·</span>'
     + '<button class="lnk" data-act="support">'+esc(cfg("supportLabel"))+'</button>'
     + '</div>'
     + legalFooter(S.legal);
@@ -3443,7 +3475,7 @@ function viewLogin(){
     + '<button class="btn primary block" data-act="login"'+(S.busy?" disabled":"")+'>'+(S.busy?"Loggar in…":"Logga in")+'</button>'
     + '<button class="lnk" data-act="forgot" style="align-self:center">Glömt lösenord?</button>'
     + '</div>'
-    + (S.loginErr?'<div class="err">'+esc(S.loginErr)+'</div>':'')
+    + (S.loginErr?'<div class="err" role="alert">'+esc(S.loginErr)+'</div>':'')
     + (S.dbErr?'<div class="err"><b>Appen når inte databasen.</b><br>Vanligaste orsaken: säkerhetsreglerna är inte publicerade i Firestore, '
       + 'eller så saknas adressen under Authentication → Settings → Authorized domains i Firebase. '
       + 'Felkod: '+esc(S.dbErr)+'</div>':'')
@@ -4471,7 +4503,8 @@ function render(){
   /* Mjuk övergång bara när man faktiskt byter flik – inte vid varje
      bakgrundssparning, så att det man skriver aldrig hoppar till. */
   const swap = S.tab!==lastViewTab; lastViewTab=S.tab;
-  app.innerHTML=topbar()+'<div class="view'+(swap?' view--enter':'')+'">'+body+'</div>'+supportBar();
+  app.innerHTML='<a class="skiplink" href="#main">Hoppa till innehållet</a>'+topbar()+'<main id="main" tabindex="-1" class="view'+(swap?' view--enter':'')+'">'+body+'</main>'+supportBar();
+  markScrollRegions(app);
   if(dirty.size){
     dirty.forEach(function(v, id){
       const el=document.getElementById(id);
@@ -5708,6 +5741,15 @@ document.addEventListener("change", async function(ev){
 });
 document.addEventListener("keydown", function(ev){
   if(ev.key==="Escape" && inModal()){ closeModal(); return; }
+  if(ev.key==="Tab" && inModal()){
+    const dlg=modalRoot.querySelector(".modal");
+    const f=dlg ? [].slice.call(dlg.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')).filter(function(x){ return x.offsetParent!==null; }) : [];
+    if(f.length){
+      const first=f[0], last=f[f.length-1];
+      if(ev.shiftKey && (document.activeElement===first || !dlg.contains(document.activeElement))){ ev.preventDefault(); last.focus(); }
+      else if(!ev.shiftKey && (document.activeElement===last || !dlg.contains(document.activeElement))){ ev.preventDefault(); first.focus(); }
+    }
+  }
   if(ev.key!=="Enter" || !ev.target) return;
   const id=ev.target.id, click=sel=>{ const b=(inModal()?modalRoot:document).querySelector(sel); if(b) b.click(); };
   if(id==="l-user"||id==="l-pw"){ ev.preventDefault(); const b=document.querySelector("[data-act='login']"); if(b) b.click(); }

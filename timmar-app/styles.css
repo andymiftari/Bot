@@ -10,7 +10,7 @@
    som en anlöpningsrand under topplisten. */
 :root{
   --ground:#E3E7E5; --surface:#F8F9F8; --surface-2:#EFF2F0; --sunken:#E6EAE8;
-  --ink:#1D2A33; --ink-2:#3A4954; --muted:#5D6B74;
+  --ink:#1D2A33; --ink-2:#3A4954; --muted:#5A6770; --field-line:#7F8A86;
   --line:#D2D9D6; --line-2:#B4BFBB; --hatch:rgba(29,42,51,.09);
   --inv-ink:#FFFFFF;
   --scale:#1D2A33; --on-scale:#E7ECEA; --on-scale-2:#9FB0BA;
@@ -29,7 +29,7 @@
   :root:not([data-theme="light"]){
     --ground:#10171C; --surface:#172129; --surface-2:#1C2731; --sunken:#202C36;
     --ink:#E4EAEC; --ink-2:#BCC7CD; --muted:#8C9BA4;
-    --line:#26333D; --line-2:#3A4954; --hatch:rgba(228,234,236,.08);
+    --line:#26333D; --line-2:#3A4954; --hatch:rgba(228,234,236,.08); --field-line:#6A7A85;
     --inv-ink:#10171C;
     --scale:#0B1115; --on-scale:#E4EAEC; --on-scale-2:#8C9BA4;
     --accent:#79A6D6; --accent-ink:#0B1115; --accent-soft:#1D3045;
@@ -43,7 +43,7 @@
 :root[data-theme="dark"]{
   --ground:#10171C; --surface:#172129; --surface-2:#1C2731; --sunken:#202C36;
   --ink:#E4EAEC; --ink-2:#BCC7CD; --muted:#8C9BA4;
-  --line:#26333D; --line-2:#3A4954; --hatch:rgba(228,234,236,.08);
+  --line:#26333D; --line-2:#3A4954; --hatch:rgba(228,234,236,.08); --field-line:#6A7A85;
   --inv-ink:#10171C;
   --scale:#0B1115; --on-scale:#E4EAEC; --on-scale-2:#8C9BA4;
   --accent:#79A6D6; --accent-ink:#0B1115; --accent-soft:#1D3045;
@@ -108,7 +108,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .navgroup .per{min-width:186px;text-align:center;font-stretch:85%;font-size:17px;font-weight:600}
 .navgroup .per small{display:block;font-size:11px;font-weight:400;color:var(--muted);}
 input[type=text],input[type=number],input[type=password],select,textarea{
-  border:1px solid var(--line-2);background:var(--surface);padding:10px 9px;width:100%;border-radius:var(--r-ctl);min-height:44px;font-size:16px}
+  border:1px solid var(--field-line);background:var(--surface);padding:10px 9px;width:100%;border-radius:var(--r-ctl);min-height:44px;font-size:16px}
 input:disabled,select:disabled{background:var(--sunken);color:var(--muted)}
 label.fld{display:block}
 label.fld > span{display:block;margin-bottom:4px}
@@ -132,7 +132,7 @@ label.fld > span{display:block;margin-bottom:4px}
 .wk .lock{font-size:9px;line-height:1}
 .cell{background:var(--surface);border:0;text-align:left;min-height:112px;padding:7px 8px 6px;display:flex;flex-direction:column;gap:4px;cursor:pointer;font:inherit;color:inherit;position:relative;overflow:hidden}
 .cell:hover{background:var(--surface-2)}
-.cell.out{background:var(--surface-2);opacity:.55}
+.cell.out{background:var(--surface-2);color:var(--muted)}
 .cell.free{background-image:repeating-linear-gradient(135deg,transparent 0 7px,var(--hatch) 7px 8px)}
 .cell.today{box-shadow:inset 0 0 0 2px var(--accent)}
 .cell .daynum{font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:4px}
@@ -431,7 +431,7 @@ html{overflow-x:clip}
 .toast{border-radius:var(--r-ctl);background:var(--scale);color:var(--on-scale)}
 .err{border-color:var(--bad);color:var(--bad);background:var(--bad-bg);border-radius:var(--r-ctl)}
 .budget .track{border-radius:999px}
-input:focus,select:focus,textarea:focus{border-color:var(--accent);outline:0;box-shadow:0 0 0 3px var(--accent-soft)}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);outline:0;box-shadow:0 0 0 1px var(--accent), 0 0 0 4px var(--accent-soft)}
 .btn{font-weight:600}
 .btn.sm{font-size:13px}
 .note{font-size:13px;line-height:1.45}
@@ -562,3 +562,14 @@ input,select,textarea{transition:border-color .14s ease, box-shadow .14s ease, b
 
 /* robotfälla i supportformuläret */
 .hp{position:absolute!important;left:-10000px;width:1px;height:1px;overflow:hidden}
+
+/* ---------- tillgänglighet (WCAG 2.1 AA) ---------- */
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.skiplink{position:absolute;left:12px;top:-60px;z-index:1000;background:var(--ink);color:var(--inv-ink);padding:10px 14px;border-radius:6px;text-decoration:none;font-weight:600}
+.skiplink:focus{top:12px}
+main.view:focus{outline:none}
+.tblwrap[role="region"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:380px){
+  .navgroup .per{min-width:0;flex:1 1 auto}
+  .navgroup{flex-wrap:wrap}
+}
