@@ -15,8 +15,9 @@ import {
 import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL, SYNC_TOKEN }
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
+import { legalFooter, viewPrivacy, viewCookies } from "./juridik.js";
 
-export const APP_VERSION = "2.14.0";
+export const APP_VERSION = "2.15.0";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -297,7 +298,7 @@ const S = {
   reminders:[], lwApprovals:[], settings:{}, lists:{}, inbox:[], inboxFilter:"oppna",
   view:"month", tab:"tid", cursor:new Date(), targetEmp:null,
   projSel:null, projPeriod:"month", lastProj:null, unsubs:[], installEvt:null,
-  offers:[], off:null, offSel:null, firm:{}
+  offers:[], off:null, offSel:null, firm:{}, legal:null, legalPage:null
 };
 /* QR-koderna i bilarna pekar på #kor=<bilens id>. Adressen läses av innan
    inloggningen, så att rätt bil öppnas så fort föraren är inne. */
@@ -318,6 +319,8 @@ S.deepKor = parseKorHash();
 const ROUTES={tid:"tidrapport", kor:"korjournal", projekt:"projekt", statistik:"statistik",
   kalkyl:"kalkyl", attest:"veckoattest", arkiv:"arkiv", personal:"personal", listor:"listor",
   inkorg:"inkorg", utseende:"utseende"};
+/* Sidor som går att läsa utan inloggning. */
+const LEGAL_ROUTES={privacy:"integritetspolicy", cookies:"cookies"};
 const ADMIN_TABS=["attest","personal","arkiv","listor","kalkyl","statistik"];
 const SUPPORT_TABS=["inkorg","utseende"];
 const APP_BASE=(function(){ try{ return new URL(".", import.meta.url).pathname; }catch(e){ return "/"; } })();
@@ -335,17 +338,20 @@ function readRoute(){
   }catch(e){}
   let tab=null;
   Object.keys(ROUTES).forEach(function(k){ if(ROUTES[k]===seg) tab=k; });
+  let legal=null;
+  Object.keys(LEGAL_ROUTES).forEach(function(k){ if(LEGAL_ROUTES[k]===seg) legal=k; });
   let proj=null;
   try{ proj=new URLSearchParams(location.search).get("p"); }catch(e){}
-  return {tab:tab, proj:proj||null};
+  return {tab:tab, proj:proj||null, legal:legal};
 }
 function routeUrl(){
+  if(S.legalPage) return APP_BASE+LEGAL_ROUTES[S.legalPage];
   return APP_BASE+(ROUTES[S.tab]||ROUTES.tid)
     +(S.tab==="projekt" && S.projSel ? "?p="+encodeURIComponent(S.projSel) : "");
 }
 let navReplace=false;
 function syncUrl(){
-  if(!S.me) return;
+  if(!S.me && !S.legalPage) return;
   const want=routeUrl();
   const cur=location.pathname+location.search;
   if(want!==cur){
@@ -353,6 +359,7 @@ function syncUrl(){
   }
   navReplace=false;
 }
+S.legalPage=readRoute().legal;
 try{ if("scrollRestoration" in history) history.scrollRestoration="manual"; }catch(e){}
 
 const app = document.getElementById("app");
@@ -364,7 +371,11 @@ function toast(msg){
   clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>{toastRoot.innerHTML="";},3400);
 }
+function prefsEnabled(){
+  try{ return localStorage.getItem("timmar:prefsOff")!=="1"; }catch(e){ return true; }
+}
 function prefsSave(){
+  if(!prefsEnabled()) return;
   try{ localStorage.setItem("timmar:prefs", JSON.stringify({
     view:S.view, tab:S.tab, cursor:dkey(S.cursor), lastProj:S.lastProj
   })); }catch(e){}
@@ -790,7 +801,7 @@ function topbar(){
     + '<span class="eyebrow">Konto</span></button>'
     + '</div>'
     + '<div class="tabs" role="tablist">'
-    + tabs.map(t=>'<button class="tab" role="tab" aria-selected="'+(S.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+'</button>').join("")
+    + tabs.map(t=>'<button class="tab" role="tab" aria-selected="'+(S.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+esc(t[1])+'</button>').join("")
     + '</div><div class="temper" aria-hidden="true"></div>'
     + (S.workerView?'<div class="banner workerview" role="status"><span><b>Arbetarvy.</b> Du ser appen som en arbetare ser den. '
       + 'Det du sparar sparas som vanligt på ditt eget konto.</span>'
@@ -3330,7 +3341,8 @@ function supportBar(){
   return '<div class="supportbar">'
     + '<span class="note">'+esc(cfg("appName"))+' '+APP_VERSION+'</span><span class="dotsep">·</span>'
     + '<button class="lnk" data-act="support">'+esc(cfg("supportLabel"))+'</button>'
-    + '</div>';
+    + '</div>'
+    + legalFooter(S.legal);
 }
 function supportModal(msg, ok){
   const me=S.me||{};
@@ -3339,9 +3351,11 @@ function supportModal(msg, ok){
     + '<button class="btn sm ghost" data-act="close">Stäng</button></div>'
     + '<div class="mb"><div class="stack">'
     + '<p class="note">Beskriv vad som händer så återkommer vi. Vi ser automatiskt vilken sida du var på.</p>'
-    + '<label class="fld"><span class="eyebrow">Ditt namn</span><input id="sp-name" type="text" value="'+esc(me.name||"")+'"></label>'
-    + '<label class="fld"><span class="eyebrow">Så når vi dig (telefon eller mejl)</span><input id="sp-contact" type="text" placeholder="070-123 45 67"></label>'
-    + '<label class="fld"><span class="eyebrow">Vad gäller det?</span><textarea id="sp-msg" rows="5" placeholder="T.ex. Jag kan inte skicka in vecka 38"></textarea></label>'
+    + '<label class="fld"><span class="eyebrow">Ditt namn</span><input id="sp-name" type="text" maxlength="100" autocomplete="name" value="'+esc(me.name||"")+'"></label>'
+    + '<label class="fld"><span class="eyebrow">Så når vi dig (telefon eller mejl)</span><input id="sp-contact" type="text" maxlength="120" placeholder="070-123 45 67"></label>'
+    + '<label class="fld"><span class="eyebrow">Vad gäller det?</span><textarea id="sp-msg" rows="5" maxlength="4000" placeholder="T.ex. Jag kan inte skicka in vecka 38"></textarea></label>'
+    /* Fälla för robotar: osynligt för människor, men robotar fyller i allt. */
+    + '<div class="hp" aria-hidden="true"><label>Lämna tomt <input id="sp-web" type="text" tabindex="-1" autocomplete="off"></label></div>'
     + (msg?'<div class="err">'+esc(msg)+'</div>':'')
     + (ok?'<div class="err"><b>Tack!</b> Förfrågan är skickad.</div>':'')
     + '</div></div>'
@@ -3350,11 +3364,24 @@ function supportModal(msg, ok){
       const t=document.getElementById("sp-msg"); if(t) t.focus();
     });
 }
+/* Tar bort styrtecken och begränsar längden. Allt som visas escapas dessutom
+   med esc() när det ritas ut, så text kan aldrig bli kod. */
+function cleanText(v, max){
+  return String(v==null?"":v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g,"").trim().slice(0, max);
+}
+let lastSupportAt=0;
 async function sendSupport(){
-  const name=(document.getElementById("sp-name").value||"").trim();
-  const contact=(document.getElementById("sp-contact").value||"").trim();
-  const message=(document.getElementById("sp-msg").value||"").trim();
+  const hp=document.getElementById("sp-web");
+  if(hp && hp.value){ const seq=supportModal("", "ok"); setTimeout(function(){ if(modalSeq===seq) closeModal(); }, 1800); return; }
+  const name=cleanText(document.getElementById("sp-name").value, 100);
+  const contact=cleanText(document.getElementById("sp-contact").value, 120);
+  const message=cleanText(document.getElementById("sp-msg").value, 4000);
   if(message.length<5){ supportModal("Skriv några ord om vad som hänt.",""); return; }
+  if(contact && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contact) && !/^[+0-9][0-9 ()-]{5,}$/.test(contact)){
+    supportModal("Skriv ett telefonnummer eller en e-postadress, eller lämna fältet tomt.",""); return;
+  }
+  if(Date.now()-lastSupportAt<30000){ supportModal("Vänta en halv minut innan du skickar nästa förfrågan.",""); return; }
+  lastSupportAt=Date.now();
   const sid=String(Date.now())+"-"+uid();
   const payload={
     id:sid, done:false,
@@ -3516,6 +3543,12 @@ const numOut = n => (+n||0) ? String(r2(n)).replace(".",",") : "";
 async function loadOffers(){
   S.offers=(await Store.list("offers")).sort((a,b)=>String(b.nr||"").localeCompare(String(a.nr||"")));
   try{ S.firm=(await Store.get("settings/offert"))||{}; }catch(e){ S.firm={}; }
+  /* Fanns firmauppgifterna redan innan sidfoten kom till: spegla dem en gång. */
+  if(S.firm.name && !S.legal && isAdmin()){
+    const f=S.firm, legal={name:f.name, orgnr:f.orgnr||"", address:f.address||"", zip:f.zip||"", city:f.city||"",
+      email:f.email||"", phone:f.phone||"", vatnr:f.vatnr||"", fskatt:!!f.fskatt, web:f.web||""};
+    Store.merge("meta/app", {legal:legal}).then(function(){ S.legal=legal; }).catch(function(e){ console.error("legal", e); });
+  }
   try{ S.aiKnow=Object.assign({prices:[], norms:[], rules:""}, (await Store.get("settings/aikunskap"))||{}); }
   catch(e){ S.aiKnow={prices:[], norms:[], rules:""}; }
   try{ S.aiExamples=(await Store.list("aiexempel")).sort((a,b)=>String(b.at).localeCompare(String(a.at))); }
@@ -4261,7 +4294,15 @@ async function handleKalkyl(act, t){
       workshop:g("ff-workshop").trim(), aiHints:g("ff-aihints").trim(), updatedAt:new Date().toISOString()};
     if(!body.name) return firmModal("Fyll i företagsnamnet."), true;
     const ok=await guard(function(){ return Store.set("settings/offert", body); }, "Firmauppgifterna är sparade.");
-    if(ok){ S.firm=body; closeModal(); render(); if(S.off) offerLive(); }
+    if(ok){
+      S.firm=body;
+      /* Uppgifterna i sidfoten och integritetspolicyn ska synas för alla, även
+         före inloggning, så de offentliga fälten speglas till meta/app. */
+      const legal={name:body.name, orgnr:body.orgnr, address:body.address, zip:body.zip, city:body.city,
+        email:body.email, phone:body.phone, vatnr:body.vatnr, fskatt:body.fskatt, web:body.web};
+      try{ await Store.merge("meta/app", {legal:legal}); S.legal=legal; }catch(e){ console.error("legal", e); }
+      closeModal(); render(); if(S.off) offerLive();
+    }
     return true;
   }
   if(!S.off) return false;
@@ -4371,9 +4412,13 @@ async function loadTab(){
 }
 /* Bakåt- och framåtknappen. Är en dialog öppen stänger bakåt bara dialogen. */
 window.addEventListener("popstate", async function(){
-  if(!S.me) return;
-  if(inModal()){ closeModal(); syncUrl(); return; }
   const r=readRoute();
+  if(inModal()){ closeModal(); if(S.me) syncUrl(); return; }
+  if(r.legal || S.legalPage){
+    S.legalPage=r.legal; navReplace=true; render(); window.scrollTo(0,0);
+    if(r.legal || !S.me) return;
+  }
+  if(!S.me) return;
   const tab=(r.tab && tabAllowed(r.tab)) ? r.tab : "tid";
   try{
     if(tab!==S.tab){ S.tab=tab; S.projSel=null; await loadTab(); }
@@ -4388,6 +4433,12 @@ window.addEventListener("popstate", async function(){
 let lastViewTab=null;
 function render(){
   if(!configured){ app.innerHTML=viewSetup()+supportBar(); return; }
+  if(S.legalPage){
+    const opt={appName:cfg("appName"), supportMail:!!SUPPORT_KEY, anthropic:false, prefsOn:prefsEnabled()};
+    app.innerHTML=(S.legalPage==="cookies" ? viewCookies(S.legal, opt) : viewPrivacy(S.legal, opt))+supportBar();
+    syncUrl();
+    return;
+  }
   if(S.phase==="boot"){ app.innerHTML='<div class="skel">Startar '+esc(cfg("appName"))+'…</div>'; return; }
   if(S.phase==="onboarding"){ app.innerHTML=viewOnboarding()+supportBar(); return; }
   if(S.phase==="fixup"){ app.innerHTML=viewFixup()+supportBar(); return; }
@@ -4489,6 +4540,25 @@ document.addEventListener("click", async function(ev){
   const act=t.dataset.act;
   dirty.clear();
   if(act==="noop") return;
+  if(act==="legal"){
+    ev.preventDefault(); if(inModal()) closeModal();
+    S.legalPage=t.dataset.v; render(); window.scrollTo(0,0); return;
+  }
+  if(act==="legalback"){
+    S.legalPage=null;
+    if(!S.me){ try{ history.pushState(null,"",APP_BASE); }catch(e){} }
+    render(); window.scrollTo(0,0); return;
+  }
+  if(act==="legalprefs"){
+    const on=!!t.checked;
+    try{ if(on) localStorage.removeItem("timmar:prefsOff"); else { localStorage.setItem("timmar:prefsOff","1"); localStorage.removeItem("timmar:prefs"); } }catch(e){}
+    toast(on?"Appen kommer ihåg senaste vy och vecka.":"Appen kommer inte längre ihåg senaste vy och vecka."); return;
+  }
+  if(act==="legalclear"){
+    try{ localStorage.removeItem("timmar:prefs"); Object.keys(localStorage).filter(k=>/^timmar:remind:/.test(k)).forEach(k=>localStorage.removeItem(k)); }catch(e){}
+    try{ if(window.caches){ const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); } }catch(e){}
+    toast("Sparade inställningar och appens cache är rensade på den här enheten."); return;
+  }
   if(/^(off|lr)/.test(act) && S.tab==="kalkyl" && await handleKalkyl(act, t)) return;
   if(act==="doupdate"){ location.reload(); return; }
   if(act==="ovl"){ if(ev.target===t) closeModal(); return; }
@@ -5539,7 +5609,7 @@ document.addEventListener("click", async function(ev){
     try{
       const secName="secondary";
       const sec = getApps().find(a=>a.name===secName) || initializeApp(firebaseConfig, secName);
-      const secAuth=getAuth(sec), secDb=getFirestore(sec);
+      const secAuth=getAuth(sec);
       const mail=(document.getElementById("e-mail").value||"").trim();
       /* Har personen en riktig e-post blir den inloggningsadress – då går lösenordet
          att återställa via mejl. Annars används den interna adressen. */
@@ -5549,17 +5619,14 @@ document.addEventListener("click", async function(ev){
         authEmail:authEmail,
         email:mail,
         phone:(document.getElementById("e-phone").value||"").trim()};
-      await setDoc(doc(secDb,"employees",cred.user.uid), base);
+      /* Profilen skrivs av superadmin, inte av det nya kontot. Reglerna låter
+         bara superadmin skapa profiler – annars skulle vem som helst som
+         skapar ett Firebase-konto kunna ge sig själv en profil och komma in. */
       await signOut(secAuth);
+      const full=Object.assign({}, base, {role:role});
+      await Store.set("employees/"+cred.user.uid, full);
       try{ await Store.set("usernames/"+user, {email:authEmail, name:name}); }catch(e){ console.error(e); }
-      if(role!=="arbetare"){
-        /* kontot skapar sig självt som arbetare, superadmin höjer rollen direkt efter */
-        const full=Object.assign({}, base, {role:role});
-        await Store.set("employees/"+cred.user.uid, full);
-        S.employees.push(Object.assign({id:cred.user.uid}, full));
-      }else{
-        S.employees.push(Object.assign({id:cred.user.uid}, base));
-      }
+      S.employees.push(Object.assign({id:cred.user.uid}, full));
       S.employees.sort((a,b)=>String(a.name).localeCompare(String(b.name),"sv"));
       closeModal(); toast("Profilen är skapad. Ge personen kontonamn och lösenord."); render();
     }catch(err){
@@ -5685,6 +5752,7 @@ async function boot(){
       else throw e;
     }
     S.metaExists=meta.exists();
+    if(meta.exists() && meta.data().legal) S.legal=meta.data().legal;
     if(meta.exists() && meta.data().ownerUid) S.ownerUid=meta.data().ownerUid;
     S.dbErr="";
     if(!S.metaExists){ S.phase="onboarding"; render(); }
