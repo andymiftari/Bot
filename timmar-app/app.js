@@ -17,7 +17,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
 import { qrSvg } from "./qr.js";
 import { legalFooter, viewPrivacy, viewCookies } from "./juridik.js";
 
-export const APP_VERSION = "2.15.1";
+export const APP_VERSION = "2.16.0";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -1174,6 +1174,9 @@ const QUOTE_PARTS = [["labour","Arbete"],["material","Material"],["travel","Kör
    rad uppdaterad (reglerna tillåter inget annat) och alla kan läsa summan.
    Arbetarna ser bara timmar – aldrig priser eller material. */
 const isFixed = p => !!(p && p.fixed && projQuote(p).hours>0);
+/* Alla projekt med kalkylerade timmar räknas, så att arbetarna kan se hur
+   långt laget kommit mot kalkylen (bara timmar). Fast pris låser dessutom. */
+const hasQuoteHours = p => !!(p && projQuote(p).hours>0);
 function myProjHours(empId, pid){
   /* den valda personens egna timmar, räknade direkt ur tidrapporten */
   let h=0;
@@ -1216,7 +1219,7 @@ function fixedBlocked(empId, ds, next){
    pris. Bara det som ändrats skrivs. */
 async function syncProjHours(empId){
   if(!empId || S.targetEmp!==empId) return;
-  for(const p of S.projects.filter(isFixed)){
+  for(const p of S.projects.filter(hasQuoteHours)){
     const h=myProjHours(empId, p.id), cur=(((S.projHours||{})[p.id]||{}).byEmp||{})[empId];
     if(cur===h || (cur===undefined && h===0)) continue;
     await Store.merge("projhours/"+p.id, {byEmp:{[empId]:h}, updatedAt:new Date().toISOString()});
@@ -1226,7 +1229,7 @@ async function syncProjHours(empId){
    just fått fast pris eller tid lagts in innan räknaren fanns. */
 async function reconcileProjHours(){
   if(!isAdmin() || !S.everyMonth || !S.everyMonth.length) return;
-  for(const p of S.projects.filter(isFixed)){
+  for(const p of S.projects.filter(hasQuoteHours)){
     const by=projectTotals(p.id, null).byEmp, cur=((S.projHours||{})[p.id]||{}).byEmp||{};
     const keys=Object.keys(by).concat(Object.keys(cur)).filter((k,i,a)=>a.indexOf(k)===i);
     const changed=keys.some(k=>r2(+by[k]||0)!==r2(+cur[k]||0));
@@ -1250,15 +1253,15 @@ function hoursBar(used, total, compact){
     + '<div class="lbl"><b>'+fmt(used)+' h</b> / '+fmt(total)+' h '
     + '<span>'+(left>0?fmt(left)+' h kvar':'slut')+'</span></div></div>';
 }
-/* Timmarna mot kalkylen på projektsidan. Arbetarna ser bara timmar. På ett
-   vanligt projekt kan en arbetare inte se kollegornas timmar, så där visas
-   bara hur många timmar som är kalkylerade. */
+/* Timmarna mot kalkylen på projektsidan. Arbetarna ser bara timmar – hela
+   lagets timmar mot kalkylen och hur många av dem som är deras egna. */
 function hoursPanel(p){
   const q=projQuote(p).hours; if(!(q>0)) return "";
-  if(!isFixed(p) && !isAdmin()) return '<p class="note" style="margin-top:12px">Kalkylerade timmar: <b>'+fmt(q)+' h</b></p>';
   const used=usedHours(p.id, S.me.id), shut=isFixed(p) && used>=q;
+  const mine=isAdmin() ? 0 : myProjHours(S.me.id, p.id);
   return '<div style="margin-top:14px"><span class="eyebrow">'+(isFixed(p)?'Fast pris · ':'')+'Timmar mot kalkylen</span>'
     + hoursBar(used, q, false)
+    + (!isAdmin()?'<p class="note" style="margin-top:6px">Hela laget har rapporterat <b>'+fmt(used)+' av '+fmt(q)+' h</b>. Dina egna: <b>'+fmt(mine)+' h</b>.</p>':'')
     + (shut?'<p class="note fixednote">'+(isAdmin()
         ? 'Kalkylens timmar är slut. Arbetarna kan inte lägga in fler timmar här – du kan.'
         : 'Kalkylens timmar är slut. Bara arbetsledaren kan lägga in fler timmar på projektet.')+'</p>':'')
@@ -1610,7 +1613,7 @@ function viewProjekt(){
     return '<tr class="p-'+pStatus(p)+'"><td><span class="code">'+esc(p.kod||"—")+'</span></td>'
       + '<td><b>'+esc(p.name)+'</b>'+(p.adress?'<div class="note">'+esc(p.adress)+'</div>':'')
       + (isFixed(p)?'<div class="fixedrow"><span class="pill fixed">Fast pris</span>'+hoursBar(usedHours(p.id, S.me.id), projQuote(p).hours, true)+'</div>'
-         :(!admin&&projQuote(p).hours>0?'<div class="note">Kalkyl: '+fmt(projQuote(p).hours)+' h</div>':''))+'</td>'
+         :(!admin&&projQuote(p).hours>0?'<div class="fixedrow">'+hoursBar(usedHours(p.id, S.me.id), projQuote(p).hours, true)+'</div>':''))+'</td>'
       + '<td>'+esc(p.kund||"—")+'</td>'
       + '<td>'+pStatusPill(p)+'</td>'
       + (admin?'<td>'+invSelect(p)+'</td>':'')
@@ -5565,7 +5568,7 @@ document.addEventListener("click", async function(ev){
     }, status==="avslutad"&&pStatus(old)!=="avslutad"?"Projektet är avslutat och flyttat till arkivet.":"Projektet är sparat.");
     if(status==="avslutad" && S.projSel===id && S.tab==="projekt") S.projSel=null;
     /* Har projektet just fått fast pris ska arbetarnas räknare stämma direkt. */
-    if(isFixed(body)){ try{ if(!S.everyMonth.length) await loadEveryMonth(); await reconcileProjHours(); }catch(e){ console.error("projhours", e); } }
+    if(hasQuoteHours(body)){ try{ if(!S.everyMonth.length) await loadEveryMonth(); await reconcileProjHours(); }catch(e){ console.error("projhours", e); } }
     closeModal(); render(); return;
   }
   if(act==="delproj"){
