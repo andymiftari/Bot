@@ -16,7 +16,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
   from "./firebase-config.js";
 import { qrSvg } from "./qr.js";
 
-export const APP_VERSION = "2.13.0";
+export const APP_VERSION = "2.13.1";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -380,8 +380,28 @@ const projLabel = id => { const p=projById(id); return p ? (p.kod||p.name) : "Ut
 const isOwner = () => !!(S.me && S.ownerUid && S.me.id===S.ownerUid);
 /* Den som satte upp firman räknas alltid som superadmin, även om rollen
    blivit fel i databasen. Annars kan ingen rätta till något. */
-const isAdmin = () => !!(S.me && (S.me.role==="admin" || S.me.role==="support" || isOwner()));
-const isSupport = () => !!(S.me && S.me.role==="support");
+/* Arbetarvy: utvecklaren (rollen support) kan se appen precis som en
+   arbetare ser den – flikar, projekt, fast pris, inga belopp – utan att logga
+   ut. Ingenting ändras i databasen; appen visar och tillåter bara det en
+   arbetare får. Gäller tills den stängs av eller sidan laddas om. */
+const canWorkerView = () => !!(S.me && S.me.role==="support");
+const isAdmin = () => !S.workerView && !!(S.me && (S.me.role==="admin" || S.me.role==="support" || isOwner()));
+const isSupport = () => !S.workerView && !!(S.me && S.me.role==="support");
+async function setWorkerView(on){
+  if(!canWorkerView()) return;
+  S.workerView=!!on;
+  closeModal();
+  S.projSel=null; S.off=null; S.offSel=null; S.everyMonth=[]; S.costs=[];
+  if(S.workerView && ["tid","kor","projekt"].indexOf(S.tab)<0) S.tab="tid";
+  try{
+    await loadAll();
+    await selectEmployee(S.me.id);
+    if(S.tab==="kor") await loadKor();
+    if(S.tab==="projekt") await loadProjectData();
+  }catch(e){ console.error(e); }
+  render(); window.scrollTo(0,0);
+  toast(S.workerView?"Arbetarvy: du ser appen som en arbetare ser den.":"Tillbaka i utvecklarvyn.");
+}
 /* Inställningar med standardvärden som fallback. */
 function cfg(path, fallback){
   const parts=String(path).split(".");
@@ -720,12 +740,15 @@ function topbar(){
     + (S.installEvt?'<button class="btn sm" data-act="install">Installera appen</button>':'')
     + (S.updateReady?'<button class="btn sm primary" data-act="doupdate" title="En ny version av appen finns">Uppdatera appen</button>':'')
     + '<button class="userchip" data-act="memenu"><span class="avatar">'+esc(initials(me.name))+'</span>'
-    + '<span><span class="nm">'+esc(me.name)+'</span> <span class="note">· '+esc(roleLabel(me.role))+'</span></span>'
+    + '<span><span class="nm">'+esc(me.name)+'</span> <span class="note">· '+esc(S.workerView?"Arbetarvy":roleLabel(me.role))+'</span></span>'
     + '<span class="eyebrow">Konto</span></button>'
     + '</div>'
     + '<div class="tabs" role="tablist">'
     + tabs.map(t=>'<button class="tab" role="tab" aria-selected="'+(S.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+'</button>').join("")
-    + '</div><div class="temper" aria-hidden="true"></div>';
+    + '</div><div class="temper" aria-hidden="true"></div>'
+    + (S.workerView?'<div class="banner workerview" role="status"><span><b>Arbetarvy.</b> Du ser appen som en arbetare ser den. '
+      + 'Det du sparar sparas som vanligt på ditt eget konto.</span>'
+      + '<button class="btn sm primary" style="margin-left:auto" data-act="workerview" data-v="off">Tillbaka till utvecklarvyn</button></div>':'');
 }
 
 /* ============================ tidrapport ============================ */
@@ -1996,6 +2019,13 @@ function meModal(err, ok){
     + '<span class="note">Kontonamn: '+esc(S.me.username||"—")+'</span></div>'
     + '<button class="btn sm ghost" data-act="close">Stäng</button></div>'
     + '<div class="mb"><div class="stack">'
+    + (canWorkerView()
+      ? '<h4>Arbetarvy</h4><p class="note">Se appen precis som en arbetare ser den – samma flikar, inga belopp, '
+        + 'samma låsningar. Ingenting ändras för någon annan.</p>'
+        + '<button class="btn'+(S.workerView?'':' primary')+'" data-act="workerview" data-v="'+(S.workerView?'off':'on')+'">'
+        + (S.workerView?'Tillbaka till utvecklarvyn':'Visa som arbetare')+'</button>'
+        + '<hr style="border:0;border-top:1px solid var(--line);margin:6px 0">'
+      : '')
     + '<h4>Byt lösenord</h4>'
     + '<label class="fld"><span class="eyebrow">Nuvarande lösenord</span><input id="m-old" type="password" autocomplete="current-password"></label>'
     + '<label class="fld"><span class="eyebrow">Nytt lösenord (minst 6 tecken)</span><input id="m-new" type="password" autocomplete="new-password"></label>'
@@ -4526,6 +4556,7 @@ document.addEventListener("click", async function(ev){
   if(act==="goonboarding"){ S.phase="onboarding"; S.loginErr=""; render(); return; }
   if(act==="gologin"){ S.phase="ready"; S.loginErr=""; render(); return; }
   if(act==="memenu"){ meModal("",""); return; }
+  if(act==="workerview"){ await setWorkerView(t.dataset.v==="on"); return; }
   if(act==="changepw"){
     const oldPw=document.getElementById("m-old").value||"";
     const newPw=document.getElementById("m-new").value||"";

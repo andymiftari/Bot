@@ -221,6 +221,8 @@ tr.p-vilande td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 .fixedrow .pill{align-self:flex-start}
 .fixedrow .budget{margin-top:2px}
 .fixednote{margin-top:6px;color:var(--bad);font-weight:600}
+/* arbetarvyn: tydligt att man inte ser sin vanliga vy */
+.banner.workerview{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
 .budget.over .lbl span{color:var(--bad);font-weight:600}
 .budget.compact .track{height:7px}
 .budget.compact .lbl{font-size:11.5px;text-align:right}
