@@ -17,7 +17,7 @@ import { firebaseConfig, ACCOUNT_DOMAIN, SUPPORT_ENDPOINT, SUPPORT_KEY, SYNC_URL
 import { qrSvg } from "./qr.js";
 import { legalFooter, viewPrivacy, viewCookies } from "./juridik.js";
 
-export const APP_VERSION = "2.16.0";
+export const APP_VERSION = "2.17.0";
 const BOOT_AT = Date.now();
 
 /* Rollerna. Support kan allt en superadmin kan, plus utseende, texter och inkorg. */
@@ -865,7 +865,12 @@ function nudgeYesterday(emp){
     + '<span>'+(mine?"Du har":esc(emp.name)+" har")+' ingen tid registrerad för '+DAYS[isoDow(y)]+' '+y.getDate()+' '+MONTHS[y.getMonth()]+'.</span>'
     + '<button class="btn sm" style="margin-left:auto" data-act="nudgeday" data-d="'+ds+'">Fyll i '+DAYS[isoDow(y)]+'</button></div>';
 }
+/* Under Personal kan superadmin välja att en person inte behöver skicka in
+   och få sina veckor attesterade (t.ex. ägaren eller kontoret). Den personen
+   syns inte i Veckoattest, får inga påminnelser och ingen skicka in-knapp. */
+const needsAttest = e => !(e && e.noAttest);
 function nudgeThisWeek(emp){
+  if(!needsAttest(emp)) return "";
   const now=new Date(), dow=isoDow(now);
   if(dow<4 || (dow===4 && now.getHours()<12)) return "";
   const wk=wkey(now), st=approvalOf(emp.id,wk).status;
@@ -878,6 +883,7 @@ function nudgeThisWeek(emp){
     + '<button class="btn sm primary" style="margin-left:auto" data-act="submitwk" data-w="'+wk+'">Skicka in vecka '+wkNo(wk)+'</button></div>';
 }
 function nudgeLastWeek(emp){
+  if(!needsAttest(emp)) return "";
   const prev=new Date(); prev.setDate(prev.getDate()-7);
   const wk=wkey(prev), st=approvalOf(emp.id,wk).status;
   if(st==="inskickad"||st==="godkand") return "";
@@ -1049,7 +1055,8 @@ function rail(emp){
     const mine=S.me.id===emp.id;
     const started = weekDates(w)[0] <= dkey(new Date());
     let btn='<span class="pill '+STATUS[a.status].cls+'">'+STATUS[a.status].label+'</span>';
-    if(!started && !ws.regDays && a.status==="utkast") btn='<span class="note">kommande</span>';
+    if(!needsAttest(emp)) btn='';
+    else if(!started && !ws.regDays && a.status==="utkast") btn='<span class="note">kommande</span>';
     else if(isAdmin()) btn = a.status==="godkand"
         ? '<button class="btn sm ghost" data-act="reopenwk" data-w="'+w+'">Öppna</button>'
         : '<button class="btn sm primary" data-act="approvewk" data-w="'+w+'">Attestera</button>';
@@ -1061,7 +1068,8 @@ function rail(emp){
   }).join("");
 
   let acts='<div class="actions">';
-  if(isAdmin()){
+  if(!needsAttest(emp)){ /* ingen attest – inga knappar för att skicka in */ }
+  else if(isAdmin()){
     acts += '<button class="btn" data-act="submitwk" data-w="'+wk+'">Skicka in v'+wkNo(wk)+' åt '+esc(String(emp.name).split(" ")[0])+'</button>'
          + (ap.status!=="godkand"?'<button class="btn" data-act="returnwk" data-w="'+wk+'">Returnera v'+wkNo(wk)+'</button>':'');
   }else if(ap.status==="utkast"||ap.status==="retur"){
@@ -1072,7 +1080,9 @@ function rail(emp){
 
   return '<aside class="rail">'
     + '<div class="panel">'
-    + '<div class="railhead"><h3>'+esc(emp.name)+'</h3><span class="pill '+STATUS[ap.status].cls+'">v'+wkNo(wk)+' · '+STATUS[ap.status].label+'</span></div>'
+    + '<div class="railhead"><h3>'+esc(emp.name)+'</h3>'+(needsAttest(emp)
+        ? '<span class="pill '+STATUS[ap.status].cls+'">v'+wkNo(wk)+' · '+STATUS[ap.status].label+'</span>'
+        : '<span class="pill">Ingen attest</span>')+'</div>'
     + '<div class="hero"><span class="eyebrow">Rapporterat '+esc(periodName)+'</span>'
     + '<div class="v">'+fmt(st.worked)+'<s>h</s></div>'
     + '<div class="sub">'+st.regDays+(st.regDays===1?' rapporterad dag':' rapporterade dagar')
@@ -1081,7 +1091,8 @@ function rail(emp){
     + '<div class="big"><span class="k">Fakturerbart</span><span class="v">'+fmt(st.bill)+'</span></div>'
     + '<div class="big"><span class="k">Frånvaro</span><span class="v">'+fmt(st.abs)+'</span></div>'
     + acts + '</div>'
-    + '<div class="panel"><span class="eyebrow">Veckoattest</span><div style="margin-top:6px">'+wkRows+'</div>'
+    + '<div class="panel"><span class="eyebrow">'+(needsAttest(emp)?'Veckoattest':'Veckor')+'</span><div style="margin-top:6px">'+wkRows+'</div>'
+    + (!needsAttest(emp)?'<p class="note" style="margin-top:10px">'+(S.me.id===emp.id?'Dina':esc(emp.name)+'s')+' veckor behöver inte skickas in eller attesteras. Det ändras under Personal.</p>':'')
     + (ap.comment?'<p class="note" style="margin-top:10px"><b>Kommentar:</b> '+esc(ap.comment)+'</p>':'')
     + '</div>'
     + '<div class="panel"><span class="eyebrow">Timmar per projekt</span><div class="brk">'+brkP+'</div></div>'
@@ -1092,7 +1103,8 @@ function rail(emp){
 /* ============================ veckoattest ============================ */
 function viewAttest(){
   const wk=wkey(S.cursor);
-  const rows=S.employees.map(e=>{
+  const attEmps=S.employees.filter(needsAttest), skipEmps=S.employees.filter(e=>!needsAttest(e));
+  const rows=attEmps.map(e=>{
     const st=weekStats(e.id,wk,S.everyMonth);
     const ap=S.allApprovals.find(a=>a.empId===e.id)||{status:"utkast"};
     return '<tr><td><b>'+esc(e.name)+'</b><div class="note">'+esc(roleLabel(e.role))+'</div></td>'
@@ -1117,7 +1129,7 @@ function viewAttest(){
     + '<div class="per">Vecka '+wkNo(wk)+'<small>'+weekSpan(wk)+'</small></div>'
     + '<button class="btn sm" data-act="next" aria-label="Nästa">›</button>'
     + '<button class="btn sm ghost" data-act="today">Denna vecka</button></div>'
-    + '<span class="note" style="margin-left:auto">'+done+' attesterade · '+pend+' inskickade · '+S.employees.length+' anställda</span>'
+    + '<span class="note" style="margin-left:auto">'+done+' attesterade · '+pend+' inskickade · '+attEmps.length+' att attestera</span>'
     + '<button class="btn" data-act="remind">Påminnelser'+(missing?" ("+missing+")":"")+'</button>'
     + '<button class="btn" data-act="approveall" data-w="'+wk+'">Attestera alla inskickade</button>'
     + '<button class="btn" data-act="csvweek">Exportera veckan (Excel)</button></div>'
@@ -1125,6 +1137,7 @@ function viewAttest(){
     + '<th class="r">Fakturerbart</th><th class="r">Övertid</th><th class="r">Frånvaro</th>'
     + '<th class="r">Dagar</th><th class="r">Saknas</th><th>Status</th><th></th></tr></thead>'
     + '<tbody>'+(rows||'<tr><td colspan="9" class="empty">Inga anställda upplagda.</td></tr>')+'</tbody></table></div>'
+    + (skipEmps.length?'<p class="note" style="margin-top:10px"><b>Behöver inte attest:</b> '+skipEmps.map(e=>esc(e.name)).join(", ")+'. Det ändras under Personal → Redigera.</p>':'')
     + '<p class="note" style="margin-top:10px">Attesten sker per vecka. Attest låser veckan för den anställde – du som superadmin kan alltid öppna upp den igen, lägga in tid åt någon annan och skicka in åt dem.</p>';
 }
 
@@ -1758,6 +1771,7 @@ function viewPersonal(){
       + (owner?'<div class="note">satte upp firman – alltid superadmin</div>':'')+'</td>'
       + '<td><span class="code">'+esc(e.username||"—")+'</span></td>'
       + '<td><span class="pill'+(shownRole==="arbetare"?"":" solid")+'">'+esc(roleLabel(shownRole))+'</span>'
+      + (!needsAttest(e)?' <span class="pill">Ingen attest</span>':'')
       + (owner&&e.role!=="admin"&&e.role!=="support"?'<div class="note">rollen i databasen står som '+esc(roleLabel(e.role))+'</div>':'')+'</td>'
       + '<td>'+(looksReal(e.authEmail)
           ? '<span class="note">'+esc(e.authEmail)+'</span>'
@@ -2010,6 +2024,9 @@ function empModal(empId, err){
     + '<option value="admin"'+(e.role==="admin"?" selected":"")+'>'+esc(roleLabel("admin"))+'</option>'
     + '<option value="support"'+(e.role==="support"?" selected":"")+'>'+esc(roleLabel("support"))+' – kan även ändra utseende och texter</option>'
     + '</select></label></div>'
+    + '<label class="check"><input id="e-attest" type="checkbox"'+(e.noAttest?"":" checked")+'>'
+    + '<span>Ska skicka in sina veckor för attest</span></label>'
+    + '<p class="note" style="margin-top:-6px">Kryssa ur för den som inte behöver attest, t.ex. ägaren eller kontoret. Personen försvinner då ur Veckoattest och får inga påminnelser. Timmarna sparas som vanligt.</p>'
     + (empId?(looksReal(e.authEmail)
         ? '<div class="panel" style="padding:12px">'
           +'<span class="eyebrow">Inloggning</span>'
@@ -2819,6 +2836,7 @@ function lastWeekKey(){
 function pendingFor(wk){
   const weekEnd=weekDates(wk)[6];
   return S.employees.filter(function(e){
+    if(!needsAttest(e)) return false;
     /* den som anställdes efter veckan ska inte påminnas om den */
     if(e.createdAt && String(e.createdAt).slice(0,10) > weekEnd) return false;
     const ap=S.lwApprovals.find(a=>a.empId===e.id) || {status:"utkast"};
@@ -5479,7 +5497,7 @@ document.addEventListener("click", async function(ev){
   }
   if(act==="approveall"){
     if(!isAdmin()) return;
-    const pend=S.allApprovals.filter(a=>a.status==="inskickad");
+    const pend=S.allApprovals.filter(a=>a.status==="inskickad" && needsAttest(S.employees.find(e=>e.id===a.empId)));
     if(!pend.length){ toast("Inga inskickade veckor att attestera."); return; }
     await guard(async function(){ for(const a of pend){ await setApproval(a.empId, wk, "godkand", a.comment||""); } },
       pend.length+" veckor attesterade.");
@@ -5616,7 +5634,9 @@ document.addEventListener("click", async function(ev){
          ny adress i databasen utan att Authentication vet om den, pekar uppslaget
          på något som inte finns och kontot blir utelåst. Den behålls som den är. */
       const authEmail = old.authEmail||"";
+      const attEl=document.getElementById("e-attest");
       const body=Object.assign({}, old, {name:name, username:user, role:role,
+        noAttest: attEl ? !attEl.checked : !!old.noAttest,
         authEmail:authEmail,
         createdAt:old.createdAt||"",
         email:(document.getElementById("e-mail").value||"").trim(),
@@ -5651,7 +5671,9 @@ document.addEventListener("click", async function(ev){
          att återställa via mejl. Annars används den interna adressen. */
       const authEmail = /.+@.+\..+/.test(mail) ? mail.toLowerCase() : emailFor(user);
       const cred=await createUserWithEmailAndPassword(secAuth, authEmail, pw);
+      const attNew=document.getElementById("e-attest");
       const base={name:name, username:user, role:"arbetare", createdAt:new Date().toISOString(),
+        noAttest: attNew ? !attNew.checked : false,
         authEmail:authEmail,
         email:mail,
         phone:(document.getElementById("e-phone").value||"").trim()};
